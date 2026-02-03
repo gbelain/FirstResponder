@@ -1,8 +1,8 @@
 # FirstResponder: AI-Powered Incident Response Agent
 
-<div style="text-align: center;">
-    <img src="logo.png" alt="logo" width="350" height="350">
-</div>
+<p align="center">
+    <img src="logo.png" alt="logo" width="300" height="300">
+</p>
 
 ## Project Overview
 
