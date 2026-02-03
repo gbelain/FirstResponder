@@ -1,5 +1,9 @@
 # FirstResponder: AI-Powered Incident Response Agent
 
+<div style="text-align: center;">
+    <img src="logo.png" alt="logo" width="350" height="350">
+</div>
+
 ## Project Overview
 
 FirstResponder is an AI agent designed to assist engineering teams during production incidents by intelligently querying logs, identifying patterns, proposing hypotheses, and maintaining a shared investigation state. **The agent acts as a collaborative hub where multiple engineers can simultaneously investigate an incident, with each team member's findings automatically shared and synthesized for the entire group.** This eliminates duplicate work, preserves context across shift changes, and ensures everyone benefits from collective discoveries.
