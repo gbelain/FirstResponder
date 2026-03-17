@@ -7,7 +7,7 @@ import { readFile, writeFile, mkdir, access, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { IncidentMemory } from "../types/memory.js";
 
-const MEMORY_DIR = "investigations";
+const MEMORY_DIR = process.env.MEMORY_DIR || "investigations";
 
 function getMemoryFilePath(incidentId: string): string {
   return join(process.cwd(), MEMORY_DIR, `${incidentId}.json`);

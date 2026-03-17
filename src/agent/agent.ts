@@ -16,7 +16,7 @@ import { memoryTools, executeMemoryTool } from "../tools/memory-tools.js";
 import { getMcpTools, executeMcpTool, closeMcpClient } from "../mcp/index.js";
 import { SYSTEM_PROMPT } from "./prompt.js";
 
-const MODEL = "claude-sonnet-4-5-20250929";
+const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 8096;
 
 /**

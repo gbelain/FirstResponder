@@ -154,3 +154,80 @@ The agent loop could eventually be replaced by developers running their own Clau
 - Build automated test flow
 - Revisit system prompt (skills pattern for GCP instructions)
 - Add codebase access (GitHub integration)
+
+## 2026-03-17 — Session 5: Investigation Dashboard (Phase 4)
+
+### Goal
+
+Build a Next.js web dashboard to replace the CLI as the primary interface. Developed concurrently with Phase 2 planning.
+
+### Architecture decisions
+
+- **Next.js App Router** in `dashboard/` directory alongside existing `src/`
+- **Vercel AI SDK v6** (`ai`, `@ai-sdk/anthropic`, `@ai-sdk/react`) for streaming chat with tool calling
+- **SWR polling** (1.5s interval) for auto-refreshing investigation panel from memory JSON files
+- **Webpack mode** (`--webpack` flag) because Turbopack can't resolve `.js` → `.ts` imports from the shared `src/` code (Node ESM convention)
+- Shared code imported via `@shared/*` TypeScript path alias pointing to `../src/*`
+- Only change to existing code: `src/memory/storage.ts` — `MEMORY_DIR` now reads from `process.env.MEMORY_DIR` (defaults to `"investigations"`, CLI unaffected)
+
+### What was built
+
+**API routes**:
+- `POST /api/chat` — Streaming chat via `streamText()` + `convertToModelMessages()` + `toUIMessageStreamResponse()`. Loads incident memory into system prompt for existing investigations.
+- `GET /api/investigation/[incidentId]` — Returns investigation JSON for panel polling
+- `GET /api/incidents` — Lists all incidents with summary metadata
+
+**Tool integration**:
+- `lib/tool-helper.ts` — Wrapper around AI SDK's `tool()` to work around Zod v4 type inference issues. Maps `parameters` → `inputSchema` (AI SDK v6 breaking change).
+- `lib/tools.ts` — 12 memory tools in Vercel AI SDK format, delegating to existing `src/memory/operations.ts`
+- `lib/mcp-tools.ts` — Dynamic MCP tool loading with proper Zod schema generation from JSON Schema (types: string, number, boolean, array)
+
+**UI components**:
+- **Chat panel** (`components/chat/`) — `useChat()` hook, streaming text, collapsible tool call display with memory/GCP badges, auto-scroll
+- **Investigation panel** (`components/investigation/`) — Metadata bar (severity, status, elapsed time), TLDR card, tabbed content (Timeline, Hypotheses, Findings)
+- **Badges** (`components/ui/badge.tsx`) — Color-coded severity, confidence, status, hypothesis status badges
+- **Landing page** (`app/page.tsx`) — Incident list + "New Investigation" button
+
+**Design**: "Mission Control" dark theme — near-black backgrounds (#09090b), electric cyan accents, Geist Mono for data, color-coded badges for severity/confidence.
+
+### Issues encountered and fixed
+
+1. **AI SDK v6 breaking changes** (main source of iteration):
+   - `ai/react` → `@ai-sdk/react` (hooks moved to separate package)
+   - `useChat` API: `input`/`handleInputChange`/`handleSubmit`/`api` removed, replaced by `sendMessage({ text })` + `transport` pattern
+   - `maxSteps` → `stopWhen: stepCountIs(N)`
+   - `UIMessage` parts flattened: `part.toolInvocation.toolName` → `part.type === "tool-{name}"` with flat properties
+   - `toDataStreamResponse()` → `toUIMessageStreamResponse()`
+   - `tool()` is identity function, expects `inputSchema` not `parameters`
+   - `tool()` overloads broken with Zod v4 — needed `defineTool()` wrapper casting through `Function`
+
+2. **Message format mismatch**: `useChat` sends `UIMessage[]` but `streamText()` expects `ModelMessage[]` — fixed with `convertToModelMessages()`
+
+3. **MCP tool type coercion**: `z.any()` produced no type info, so `resourceNames` (array) and `pageSize` (number) were sent as strings — fixed by building proper Zod schemas from JSON Schema definitions
+
+4. **Page remount on URL change**: `router.replace()` remounted the component and lost chat state — fixed with `window.history.replaceState()`
+
+5. **Chat persistence across reloads**: Messages saved to `sessionStorage` keyed by incident ID
+
+6. **Existing incident context**: Agent showed onboarding flow on existing incidents — fixed by loading incident memory into system prompt with instructions to skip onboarding
+
+### Key lesson
+
+When using libraries at unfamiliar versions, **read the installed package's type definitions before writing code**. The AI SDK v6 had major breaking changes from v3/v4 that caused 7+ build-fix cycles. A documentation MCP (e.g., Context7) would have prevented most of this.
+
+### Current state
+
+Dashboard is functional:
+- Chat with streaming AI responses and visible tool calls
+- Auto-refreshing investigation panel (timeline, hypotheses, findings)
+- New investigation creation from chat
+- Existing investigation resumption with context
+- Session-based chat persistence
+- Landing page with incident list
+
+### Next steps
+
+- Polish UI (loading states, error handling, responsive layout)
+- Test end-to-end investigation flow through dashboard
+- Deploy to Vercel (dashboard) — will need to address MCP subprocess lifecycle for serverless
+- Continue Phase 2 (Agent Studio memory) planning

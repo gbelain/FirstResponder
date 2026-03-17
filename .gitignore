@@ -74,6 +74,10 @@ dmypy.json
 *.bak
 .scratch/
 
+# Dashboard build artifacts
+dashboard/.next/
+dashboard/node_modules/
+
 # Claude Code guidance (local only)
 CLAUDE.md
 
