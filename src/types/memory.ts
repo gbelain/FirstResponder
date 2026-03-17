@@ -40,6 +40,7 @@ export interface Hypothesis {
   supporting_evidence: string[];
   counter_evidence: string[];
   ruled_out_at?: string; // ISO 8601 UTC, present when status is "ruled_out"
+  ruled_out_reason?: string; // Present when status is "ruled_out"
 }
 
 export interface Finding {
@@ -50,12 +51,6 @@ export interface Finding {
   value?: string; // Optional additional info (count, metric value, etc.)
 }
 
-export interface RuledOutEntry {
-  hypothesis: string;
-  reason: string;
-  ruled_out_at: string; // ISO 8601 UTC
-}
-
 export interface IncidentMemory {
   incident_id: string;
   incident_name: string;
@@ -64,5 +59,4 @@ export interface IncidentMemory {
   timeline: TimelineEvent[];
   hypotheses: Hypothesis[];
   findings: Finding[];
-  ruled_out: RuledOutEntry[];
 }

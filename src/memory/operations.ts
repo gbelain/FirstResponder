@@ -66,7 +66,6 @@ export async function createIncident(params: CreateIncidentParams): Promise<Inci
     ],
     hypotheses: [],
     findings: [],
-    ruled_out: [],
   };
 
   await saveMemory(memory);
@@ -188,12 +187,7 @@ export async function ruleOutHypothesis(params: RuleOutHypothesisParams): Promis
   const now = utcNow();
   hypothesis.status = "ruled_out";
   hypothesis.ruled_out_at = now;
-
-  memory.ruled_out.push({
-    hypothesis: hypothesis.title,
-    reason: params.reason,
-    ruled_out_at: now,
-  });
+  hypothesis.ruled_out_reason = params.reason;
 
   await saveMemory(memory);
   return memory;
