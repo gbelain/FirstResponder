@@ -21,7 +21,7 @@ export default function InvestigationPage() {
   return (
     <div className="flex h-screen">
       {/* Chat Panel — left side */}
-      <div className="flex-1 min-w-0 border-r border-border-subtle" style={{ flex: "55 1 0%" }}>
+      <div className="flex-1 min-w-0 border-r border-border-subtle" style={{ flex: "45 1 0%" }}>
         <ChatPanel
           incidentId={incidentId}
           onIncidentCreated={incidentId === "new" ? handleIncidentCreated : undefined}
@@ -29,7 +29,7 @@ export default function InvestigationPage() {
       </div>
 
       {/* Investigation Panel — right side */}
-      <div className="flex-1 min-w-0" style={{ flex: "45 1 0%" }}>
+      <div className="flex-1 min-w-0" style={{ flex: "55 1 0%" }}>
         <InvestigationPanel incidentId={incidentId === "new" ? null : incidentId} />
       </div>
     </div>

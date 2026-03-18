@@ -23,6 +23,29 @@
   --status-escalated: #ef4444;
 }
 
+html.light {
+  --bg-primary: #ffffff;
+  --bg-surface: #f4f4f5;
+  --bg-elevated: #e4e4e7;
+  --border-subtle: #d4d4d8;
+  --border-strong: #a1a1aa;
+  --text-primary: #09090b;
+  --text-secondary: #3f3f46;
+  --text-muted: #71717a;
+  --accent: #0891b2;
+  --accent-dim: #06b6d4;
+  --confidence-high: #16a34a;
+  --confidence-medium: #d97706;
+  --confidence-low: #dc2626;
+  --severity-critical: #dc2626;
+  --severity-high: #ea580c;
+  --severity-medium: #ca8a04;
+  --severity-low: #2563eb;
+  --status-investigating: #d97706;
+  --status-resolved: #16a34a;
+  --status-escalated: #dc2626;
+}
+
 @theme inline {
   --color-bg-primary: var(--bg-primary);
   --color-bg-surface: var(--bg-surface);
@@ -70,6 +93,11 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Light mode scrollbar */
+html.light ::-webkit-scrollbar-track {
+  background: var(--bg-surface);
 }
 
 /* Markdown in chat */

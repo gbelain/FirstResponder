@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { IncidentMemory } from "@shared/types/memory";
 import { useInvestigation } from "@/hooks/use-investigation";
 import { MetadataBar } from "./metadata-bar";
@@ -14,6 +14,22 @@ type Tab = "timeline" | "hypotheses" | "findings";
 export function InvestigationPanel({ incidentId }: { incidentId: string | null }) {
   const { data: incident, isLoading } = useInvestigation(incidentId);
   const [activeTab, setActiveTab] = useState<Tab>("timeline");
+
+  // Keyboard shortcuts: 1/2/3 to switch tabs (only when not typing in an input)
+  useEffect(() => {
+    const tabKeys: Record<string, Tab> = { "&": "timeline", "é": "hypotheses", "\"": "findings" };
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return;
+      const tab = tabKeys[e.key];
+      if (tab) {
+        e.preventDefault();
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   if (!incidentId || incidentId === "new") {
     return (
@@ -80,7 +96,7 @@ export function InvestigationPanel({ incidentId }: { incidentId: string | null }
 
       {/* Tabs */}
       <div className="flex border-b border-border-subtle">
-        {tabs.map((tab) => (
+        {tabs.map((tab, i) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
@@ -90,6 +106,11 @@ export function InvestigationPanel({ incidentId }: { incidentId: string | null }
                 : "text-text-muted hover:text-text-secondary"
             }`}
           >
+            <kbd className={`text-[9px] px-1 rounded border ${
+              activeTab === tab.key
+                ? "border-accent/30 text-accent/60"
+                : "border-border-subtle text-text-muted/50"
+            }`}>{["&", "é", "\""][i]}</kbd>
             {tab.label}
             {tab.count > 0 && (
               <span
