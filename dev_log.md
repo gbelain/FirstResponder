@@ -301,3 +301,46 @@ After finalizing the architecture decision, implemented the full hybrid approach
 - Consider adding `saveInvestigationStep` calls during the investigation loop (currently only confirmRootCause and ruleOutHypothesis trigger saves)
 - Iterate on search quality (keyword tuning, result formatting)
 - Phase 3: Swap file-based storage → Algolia index
+
+## 2026-03-18 — Session 7: Dashboard UX Improvements
+
+### Goal
+
+Improve the dashboard UX in parallel with the Agent Studio memory work (separate branch: `user-interface-improvements` off `main`). Used Playwright CLI for automated browser testing throughout.
+
+### Testing approach: Playwright CLI
+
+Used `playwright-cli` to test every change in a headless browser — taking snapshots and screenshots after each interaction. This caught several issues that wouldn't surface from code review alone:
+- **React hooks ordering violation**: Adding a `useEffect` after early returns in `InvestigationPanel` caused a "change in the order of Hooks" error visible in the Next.js error overlay
+- **Next.js dev tools overlap**: The floating dev tools button in the top-left corner intercepted clicks on the back arrow — confirmed as dev-only (not a prod issue)
+- **Hydration mismatch**: `sessionStorage` reads in `useState` initializer caused server/client divergence
+
+Playwright was also used to verify keyboard shortcuts don't fire when typing in the chat input (typed "test 123" in the input field and confirmed tabs didn't switch).
+
+### Changes made
+
+**Bug fixes**:
+- Fixed `Can't resolve '@/lib/tools'` error — created AI SDK v6 tool wrappers (`dashboard/utils/tools.ts`) with Zod schemas and `execute` functions for all 12 memory tools
+- Fixed `Can't resolve '@/lib/mcp-tools'` error — created MCP tool loader (`dashboard/utils/mcp-tools.ts`) using `@ai-sdk/mcp` package with `Experimental_StdioMCPTransport`
+- Moved files from `lib/` to `utils/` because `.gitignore` had a blanket `lib/` rule (from Python template)
+- Fixed hydration mismatch — deferred `sessionStorage` message loading to a post-mount `useEffect` instead of `useState` initializer
+
+**UX improvements**:
+- **Light/dark theme**: Added CSS variables for light mode, `ThemeToggle` component that persists to `localStorage`, placed in chat header and home page
+- **Layout rebalance**: Swapped chat/investigation split from 55/45 to 45/55 — investigation panel gets more space
+- **Back navigation**: Added back arrow in chat header linking to the investigations list (`/`)
+- **Status indicator honesty**: Replaced always-pulsing green dot with state-aware indicator: solid green (ready), pulsing cyan (streaming), solid red (error). Tooltip shows state name.
+- **Keyboard shortcuts**: `&`/`é`/`"` (AZERTY top row, no modifier needed) to switch investigation tabs (Timeline/Hypotheses/Findings). `Cmd+Enter` to send chat message from anywhere. Tab buttons show `<kbd>` hints. Shortcuts are suppressed when focus is in a text input.
+
+**Dependencies added**:
+- `@ai-sdk/mcp` — Native AI SDK MCP client integration (replaces manual Anthropic SDK format conversion)
+
+### Merge status
+
+Branch merged cleanly into `main` (no conflicts with the Agent Studio memory work from Session 6).
+
+### Next steps
+
+- Further UX improvements: resizable panels, quick action prompts, responsive layout
+- Test full end-to-end investigation flow through the updated dashboard
+- Deploy considerations
