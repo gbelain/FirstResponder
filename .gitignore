@@ -78,11 +78,7 @@ dmypy.json
 dashboard/.next/
 dashboard/node_modules/
 
-# Claude Code guidance (local only)
-CLAUDE.md
-
 # Exclude documentation and other dev folders (for now)
 Docs/
 1_spec_phase_one.md
-dev_log.md
 investigations/

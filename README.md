@@ -75,23 +75,31 @@ We have validated that Claude Code can successfully query GCP logs for Agent Stu
 ### Phase 1: Core Investigation Loop
 Establish single-user incident investigation with GCP log querying, hypothesis management, and structured memory (for now memory is stored in a file, Agent Studio memory implementation will come in a later phase). Validates that the agent can effectively investigate incidents before adding collaboration complexity.
 
-### Phase 2: Implementing Agent Studio memory
-#TODO Complete this phase using Agent Studio docs as context
+### Phase 2: Agent Studio Memory — Investigation Learnings
+Add Agent Studio memory as a **knowledge layer** alongside file-based storage. Files remain the source of truth for structured incident state (CRUD). Agent Studio memory accumulates investigation wisdom that compounds across incidents:
+- **Episodic memories** (OTAR pattern): saved during investigation steps — what was observed, reasoned, queried, and found
+- **Semantic memories**: saved when root causes are confirmed, hypotheses ruled out, or false alarms dismissed — distilled facts and patterns
+- **Search at investigation start**: "Have we seen this before?" — the agent queries past learnings when starting new investigations or proposing hypotheses
 
-### Phase 3: Multi-User Collaboration
+This hybrid architecture plays to each system's strengths: files for fast deterministic CRUD, Agent Studio memory for semantic/episodic search across all past investigations.
+
+### Phase 3: Algolia Index for Incident State
+Replace file-based storage with a standard Algolia index for structured incident state. Each incident becomes an Algolia record (up to 100KB, no size constraints). Same function signatures in `storage.ts` — pure storage swap. Benefits: searchable/facetable attributes (status, severity, affected_services), no filesystem dependency, natural path toward multi-user access and dashboard features.
+
+### Phase 4: Multi-User Collaboration
 Add support for multiple simultaneous investigators with separate conversation threads, shared memory access, and cross-thread context awareness. Enables real teams to collaborate through the agent.
 
-### Phase 4: Investigation Dashboard
-Build a web-based dashboard displaying real-time incident state including timeline, active hypotheses, key findings, and ruled-out theories. Provides visibility into investigation progress without requiring chat interaction.
+### Phase 5: Investigation Dashboard
+Build a web-based dashboard displaying real-time incident state including timeline, active hypotheses, key findings, and ruled-out theories. Provides visibility into investigation progress without requiring chat interaction. *(Note: a prototype dashboard was built during Phase 1 as a Next.js app in `dashboard/`.)*
 
-### Phase 5: Memory Optimization
-Implement background workers for memory summarization, compression of redundant queries, and intelligent context window management for long-running incidents. Ensures system scalability.
+### Phase 6: Memory Optimization
+Implement background workers for memory summarization, compression of redundant queries, and intelligent context window management for long-running incidents. Use Agent Studio's `POST /memory/consolidate` endpoint to merge and summarize accumulated learnings. Ensures system scalability.
 
-### Phase 6: Postmortem Generation
-Enable automatic postmortem document creation using accumulated timeline, hypotheses, and resolution details. Reduces post-incident documentation burden.
+### Phase 7: Postmortem Generation
+Enable automatic postmortem document creation using accumulated timeline, hypotheses, and resolution details. Leverages both the structured incident state (from Algolia index) and episodic memories (from Agent Studio) for comprehensive post-incident documentation.
 
-### Phase 7: Historical Pattern Recognition (Out of scope for lab week)
-Give the agent access to past incident memories to identify recurring patterns, suggest similar root causes, and accelerate investigation of familiar issues. Builds institutional knowledge over time.
+### Phase 8: Historical Pattern Recognition (Out of scope for lab week)
+Give the agent access to past incident memories to identify recurring patterns, suggest similar root causes, and accelerate investigation of familiar incidents. Builds institutional knowledge over time. Agent Studio's semantic search across episodic/semantic memories is the foundation for this phase.
 
 ---
 
