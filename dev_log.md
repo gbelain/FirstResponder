@@ -344,3 +344,85 @@ Branch merged cleanly into `main` (no conflicts with the Agent Studio memory wor
 - Further UX improvements: resizable panels, quick action prompts, responsive layout
 - Test full end-to-end investigation flow through the updated dashboard
 - Deploy considerations
+
+## 2026-03-18 — Session 8: Migrate Storage from JSON Files to Algolia Index (Phase 3)
+
+### Goal
+
+Replace file-based incident storage (`investigations/*.json`) with an Algolia index. Same function signatures, pure storage swap — no changes to consumers.
+
+### Why it's clean
+
+All file I/O was isolated in a single 65-line file: `src/memory/storage.ts`. It exports 5 functions. Every consumer (operations.ts, CLI tools, dashboard API routes) imports from this file. Replace the internals, keep the signatures, nothing else changes.
+
+### Implementation
+
+**Dependency**: Installed `algoliasearch` in both root and `dashboard/` workspaces.
+
+**Environment variables**: Added `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `ALGOLIA_INDEX_NAME` to `.env` and `dashboard/.env.local`. Reuses the same API key as `MEMORY_API_KEY` (confirmed correct ACLs). Removed `MEMORY_DIR` from `dashboard/.env.local` (no longer relevant).
+
+**`src/memory/storage.ts` — full rewrite** (only file with code changes):
+
+| Function | Before (files) | After (Algolia) |
+|---|---|---|
+| `ensureMemoryDir()` | Creates `investigations/` dir | No-op (kept export to avoid breaking imports) |
+| `loadMemory(id)` | `readFile` + `JSON.parse` | `client.getObject({ objectID: id })`, catch 404 → null |
+| `saveMemory(memory)` | `writeFile` + `JSON.stringify` | `client.saveObject({ objectID: memory.incident_id, ...memory })` |
+| `memoryExists(id)` | `access()` file check | `client.getObject()` with minimal attributes, catch 404 → false |
+| `listIncidents()` | `readdir` + filter `.json` | `client.searchSingleIndex({ query: '' })`, extract IDs from hits |
+
+**Key design decisions**:
+- **Lazy client singleton**: `getClient()` avoids crash at import time if env vars not yet loaded (matters for Next.js build phase)
+- **objectID**: Uses `incident_id` as Algolia's `objectID` (natural key, already unique)
+- **Response cleaning**: `stripAlgoliaFields()` removes `objectID`, `_highlightResult`, `_snippetResult`, `_rankingInfo` before returning `IncidentMemory`
+- **No `waitForTask`**: Algolia indexing is async (~1-2s). Current call patterns never do save-then-immediately-load (operations return the in-memory object). Keeps saves fast.
+- **Algolia type**: The client type is `Algoliasearch` (not `AlgoliaClient` — caught by typecheck)
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `src/memory/storage.ts` | Full rewrite — only file with code changes |
+| `.env` | Added 3 Algolia vars |
+| `dashboard/.env.local` | Added 3 Algolia vars, removed `MEMORY_DIR` |
+| `package.json` | Added `algoliasearch` dep |
+| `dashboard/package.json` | Added `algoliasearch` dep |
+
+### Files NOT modified (same signatures, no changes needed)
+
+`src/memory/operations.ts`, `src/tools/memory-tools.ts`, `dashboard/app/api/incidents/route.ts`, `dashboard/app/api/investigation/[incidentId]/route.ts`, `dashboard/app/api/chat/route.ts`, `dashboard/utils/tools.ts`
+
+### Verification
+
+1. **Typecheck**: `npm run typecheck` passes cleanly (root). Dashboard has one pre-existing TS warning in `utils/tools.ts` unrelated to this change.
+
+2. **Direct Algolia CRUD test**: Ran a Node script exercising save → get → list → delete against the `firstresponder_incidents` index. All operations succeeded.
+
+3. **End-to-end dashboard test** (Playwright CLI):
+   - Navigated to `http://localhost:3000`, clicked "+ New Investigation"
+   - Sent "Users are reporting 500 errors on the rag-api. Please investigate."
+   - Agent asked clarifying questions and called `list incidents` tool (returned empty, correct)
+   - Replied with timing/environment details
+   - Agent called `create_incident` tool — incident saved to Algolia, URL updated to `/investigation/inc_mmw8dyah_mqg7`
+   - Agent queried GCP logs, found DNS resolution failures, added timeline events, findings, and a hypothesis — all persisted to Algolia via successive `saveMemory()` calls
+   - Investigation panel rendered correctly: title, severity (critical), status (investigating), TLDR, timeline with 3 events, 1 hypothesis, 1 finding
+   - Navigated back to landing page — incident listed with correct metadata, severity/status badges
+
+4. **Algolia dashboard confirmation**: Queried `firstresponder_incidents` index directly — full incident record present with all nested data (timeline, hypotheses, findings, TLDR).
+
+### Target index
+
+- **App**: `K85SX0UT2W`
+- **Index**: `firstresponder_incidents`
+
+### Notes
+
+- **Algolia 100KB record limit**: Fine for now. Large incidents with hundreds of events could approach it eventually — monitor and compress later if needed.
+- **Race conditions**: Load-modify-save is not atomic, same as files. Acceptable for current single-user usage. For multi-user (Phase 4), consider `partialUpdateObject`.
+- **Async indexing**: Algolia's ~1-2s indexing delay means the landing page may not show a just-created incident on immediate navigation. In practice this wasn't an issue during testing — the agent's response takes longer than the indexing delay.
+
+### Next steps
+
+- Deploy dashboard to Vercel (MCP subprocess lifecycle needs addressing for serverless)
+- Phase 4: Multi-user collaboration
+- Monitor Algolia record sizes as investigations grow
