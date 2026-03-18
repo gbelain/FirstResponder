@@ -18,6 +18,7 @@ import {
   getTimeline,
 } from "../memory/operations.js";
 import { listIncidents } from "../memory/storage.js";
+import { searchPastLearnings } from "../memory/learnings.js";
 
 export const memoryTools: Tool[] = [
   {
@@ -301,6 +302,27 @@ export const memoryTools: Tool[] = [
       required: ["incident_id"],
     },
   },
+  {
+    name: "search_past_incidents",
+    description:
+      "Search past investigation learnings for relevant context. Use this when starting a new investigation, proposing a hypothesis, or when stuck. Returns past root causes, ruled-out hypotheses, and investigation steps from similar incidents.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Search query describing the issue or pattern (e.g., 'Redis timeout errors in rag-api', '500 errors checkout')",
+        },
+        services: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional list of service names to narrow the search",
+        },
+      },
+      required: ["query"],
+    },
+  },
 ];
 
 // Tool execution handler
@@ -385,6 +407,14 @@ export async function executeMemoryTool(
 
     case "get_timeline":
       return getTimeline(toolInput.incident_id as string);
+
+    case "search_past_incidents": {
+      const result = await searchPastLearnings(
+        toolInput.query as string,
+        toolInput.services as string[] | undefined,
+      );
+      return result ?? "No past learnings found for this query.";
+    }
 
     default:
       throw new Error(`Unknown memory tool: ${toolName}`);

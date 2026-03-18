@@ -14,6 +14,7 @@ import type {
   FindingType,
 } from "../types/memory.js";
 import { loadMemory, saveMemory } from "./storage.js";
+import { saveRootCauseLearning, saveRuledOutLearning } from "./learnings.js";
 
 function utcNow(): string {
   return new Date().toISOString();
@@ -190,6 +191,10 @@ export async function ruleOutHypothesis(params: RuleOutHypothesisParams): Promis
   hypothesis.ruled_out_reason = params.reason;
 
   await saveMemory(memory);
+
+  // Fire-and-forget: save learning to Agent Studio memory
+  saveRuledOutLearning(params.incident_id, hypothesis, params.reason, memory.metadata.affected_services);
+
   return memory;
 }
 
@@ -225,6 +230,10 @@ export async function confirmRootCause(params: ConfirmRootCauseParams): Promise<
   });
 
   await saveMemory(memory);
+
+  // Fire-and-forget: save learning to Agent Studio memory
+  saveRootCauseLearning(params.incident_id, hypothesis, memory.metadata.affected_services);
+
   return memory;
 }
 

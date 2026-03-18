@@ -231,3 +231,73 @@ Dashboard is functional:
 - Test end-to-end investigation flow through dashboard
 - Deploy to Vercel (dashboard) — will need to address MCP subprocess lifecycle for serverless
 - Continue Phase 2 (Agent Studio memory) planning
+
+## 2026-03-18 — Session 6: Phase 2 Architecture Decision
+
+### Agent Studio Memory Integration — Design Exploration
+
+Spent the session exploring how to integrate Agent Studio memory into FirstResponder. Investigated the Agent Studio memory REST API (undocumented direct CRUD endpoints discovered in `algolia/conversational-ai` repo).
+
+**Three approaches evaluated:**
+
+1. **Full storage swap (single record per incident)**: Store entire IncidentMemory JSON in Agent Studio's `raw_extract` field (max 5000 chars). Problem: realistic investigations (~13000 chars) exceed the limit. Compaction strategies would degrade quality, and timeline events can't be trimmed (needed for postmortem generation).
+
+2. **Manifest pattern (multi-record per incident)**: Split incident into separate memory records (1 per hypothesis, finding, timeline event) with a manifest record as index. Solves the size problem but provides no benefit over files/database for pure CRUD — we'd be fighting Agent Studio's memory model instead of using its strengths.
+
+3. **Hybrid approach (chosen)**: Keep file-based storage for structured incident state + add Agent Studio memory for investigation learnings that compound across incidents. Plays to each system's strengths: files for deterministic CRUD, Agent Studio for semantic/episodic search.
+
+**Key insight**: Agent Studio memory's value is in semantic search and episodic reasoning chains, not in structured data storage. Using it as a key-value store with extra steps wastes its capabilities. The right architecture is:
+- **Files** (later → Algolia index): operational state (IncidentMemory CRUD)
+- **Agent Studio memory**: institutional knowledge (episodic investigation steps, semantic learnings from resolved incidents, false alarm patterns)
+
+**Agent Studio Memory REST API** (discovered endpoints):
+- `POST /memory/semantic` — save facts/patterns
+- `POST /memory/episodic` — save OTAR reasoning chains
+- `POST /memory/search` — semantic + keyword search
+- `GET /memory/{id}`, `PATCH /memory/{id}`, `DELETE /memory/{id}` — full CRUD
+- Auth: `X-Algolia-Application-Id` + `X-Algolia-API-Key` (logs ACL) + `X-Algolia-Secure-User-Token`
+
+### Implementation
+
+After finalizing the architecture decision, implemented the full hybrid approach in the same session.
+
+**API connectivity verified**: Wrote a Python test script to confirm the Agent Studio memory staging API accepts our credentials (`K85SX0UT2W` app, `logs` ACL key). All CRUD operations work. Plain string user token accepted (mapped to `userID: "default"`). Discovered the response uses camelCase (`objectID`, `rawExtract`, `memoryType`) not snake_case.
+
+**New files created**:
+- `.env` — Agent Studio API credentials (base URL, app ID, API key, user token)
+- `src/memory/api-client.ts` — HTTP client for Agent Studio memory REST API (6 functions: `saveSemantic`, `saveEpisodic`, `searchMemories`, `getMemory`, `patchMemory`, `deleteMemory`). Uses Node 20 built-in `fetch`, reads credentials from `process.env`.
+- `src/memory/learnings.ts` — Higher-level module for investigation learnings:
+  - **Save functions** (fire-and-forget, never break the investigation): `saveInvestigationStep` (episodic OTAR), `saveRootCauseLearning` (semantic), `saveRuledOutLearning` (episodic), `saveFalseAlarmLearning` (semantic)
+  - **Search function**: `searchPastLearnings(query, services?)` — returns formatted context string or null
+  - All saves use `wait: false` for performance, wrapped in try/catch with console.error on failure
+- `src/test-memory-api.ts` — Smoke test script for API lifecycle (save semantic, save episodic, search, get, delete, learnings module)
+
+**Modified files**:
+- `src/memory/operations.ts` — `confirmRootCause()` now also calls `saveRootCauseLearning()`, `ruleOutHypothesis()` now also calls `saveRuledOutLearning()`. Both are fire-and-forget (no await, won't block or break the operation).
+- `src/tools/memory-tools.ts` — Added `search_past_incidents` tool (query + optional services filter) with handler calling `searchPastLearnings()`
+- `src/agent/prompt.ts` — Investigation workflow updated: step 2 is now "Search past learnings (search_past_incidents) for similar issues". Added guidance: "Past learnings are hints, not conclusions — always verify against current evidence."
+- `src/memory/index.ts` — Re-exports `api-client.ts` and `learnings.ts`
+- `package.json` — `dev` script now loads `.env` via `--env-file=.env`
+
+**Verification**:
+- `npm run typecheck` — passes cleanly
+- `npx tsx --env-file=.env src/test-memory-api.ts` — all operations pass (save, search, get, learnings module)
+- End-to-end agent test: sent "Redis timeout errors on rag-api" to the agent. It:
+  1. Created the incident in file-based storage
+  2. Called `search_past_incidents` and found past learnings from test data
+  3. Said: "past investigations show Redis timeout errors in rag-api have been tied to key format incompatibility after Redis version upgrades"
+  4. Used that context to inform its log querying strategy
+  5. Proceeded with normal investigation flow (GCP log queries, finding recording)
+
+**Key design decisions**:
+- Learning saves are fire-and-forget: `saveRuledOutLearning(...)` without `await`. If Agent Studio is down, the investigation continues normally.
+- Keywords include `incident_id`, `"firstresponder"`, and service names for targeted search.
+- `search_past_incidents` is an explicit tool (Option A from plan) — the agent decides when to search, rather than automatic preflight injection. Easier to debug and iterate.
+- `.env` loaded via Node 20's `--env-file` flag instead of adding `dotenv` dependency.
+
+### Next steps
+
+- Manual testing with real investigation flow (create → investigate → resolve → start new → verify learnings surface)
+- Consider adding `saveInvestigationStep` calls during the investigation loop (currently only confirmRootCause and ruleOutHypothesis trigger saves)
+- Iterate on search quality (keyword tuning, result formatting)
+- Phase 3: Swap file-based storage → Algolia index
