@@ -13,6 +13,6 @@ export function useMetrics(incidentId: string | null) {
       ? `/api/investigation/${incidentId}/metrics`
       : null,
     fetcher,
-    { refreshInterval: 30_000 }
+    { refreshInterval: 300_000 }
   );
 }
