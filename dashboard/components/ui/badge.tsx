@@ -40,7 +40,7 @@ export function SeverityBadge({ severity }: { severity: Severity }) {
 }
 
 export function ConfidenceBadge({ confidence }: { confidence: Confidence }) {
-  return <Badge className={confidenceStyles[confidence]}>{confidence}</Badge>;
+  return <Badge className={confidenceStyles[confidence]}>confidence: {confidence}</Badge>;
 }
 
 export function StatusBadge({ status }: { status: IncidentStatus }) {

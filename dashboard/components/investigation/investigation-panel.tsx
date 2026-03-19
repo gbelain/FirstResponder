@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import type { IncidentMemory } from "@shared/types/memory";
 import { useInvestigation } from "@/hooks/use-investigation";
 import { MetadataBar } from "./metadata-bar";
@@ -8,6 +9,8 @@ import { TLDRCard } from "./tldr-card";
 import { Timeline } from "./timeline";
 import { HypothesisCard } from "./hypothesis-card";
 import { FindingsList } from "./findings-list";
+
+const MetricsPanel = dynamic(() => import("./metrics-panel"), { ssr: false });
 
 type Tab = "timeline" | "hypotheses" | "findings";
 
@@ -93,6 +96,9 @@ export function InvestigationPanel({ incidentId }: { incidentId: string | null }
       <div className="px-4 py-3 border-b border-border-subtle">
         <TLDRCard tldr={incident.tldr} />
       </div>
+
+      {/* Metrics */}
+      <MetricsPanel incidentId={incidentId} />
 
       {/* Tabs */}
       <div className="flex border-b border-border-subtle">

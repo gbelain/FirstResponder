@@ -521,3 +521,74 @@ Added "Multi-Investigator Awareness" section: check for existing findings before
 - Concurrency stress test: simultaneous writes from multiple sessions
 - Deploy to Vercel
 - Consider WebSocket/SSE for real-time cross-session updates (currently 1.5s polling)
+
+## 2026-03-19 — Session 10: Agent Prompt Tuning + Metrics Dashboard
+
+### Part 1: System Prompt Improvements
+
+Based on a test investigation where the agent was too verbose, asked redundant clarifying questions, and dumped hypothesis details into chat instead of the dashboard, made several prompt changes.
+
+**`src/agent/prompt.ts` — System prompt overhaul**:
+
+1. **Shorter onboarding**: First message must be 2-4 sentences max. If the user already gave enough info (service, env, symptoms), skip questions and start investigating immediately. No bulleted option lists.
+2. **Service aliases**: Added mapping section — "agent studio" → `generativeai-rag-api`, "shopping guides" → `generativeai-shopping-guides-api`. Worker/scheduler for background tasks (celery, analytics, cache, conversation title generation).
+3. **Environment & project mapping**: staging → `alg-ai-platform-staging`, prod EU → `alg-ai-platform` (europe-west3), prod US → `alg-ai-platform` (us-east4). Only asks if environment is missing.
+4. **Hypotheses go to dashboard, not chat**: Explicit instruction to use `propose_hypothesis` tool and NOT write hypothesis details in chat. Agent should say "I've proposed N hypotheses — check the Hypotheses tab" instead.
+5. **Shorter communication**: Added rule to avoid repeating info already visible in the dashboard.
+
+**`dashboard/components/ui/badge.tsx`**: Changed confidence badge from showing just `medium` to `confidence: medium` for clarity.
+
+### Part 2: Always-On Metrics Dashboard
+
+Added a collapsible metrics panel to the investigation dashboard that automatically fetches and displays GCP container metrics for the service(s) being investigated.
+
+**Discovery phase**: Queried `list_metric_descriptors` on both staging and prod projects. Found that:
+- **k8s container metrics** (CPU, memory, restarts, uptime) are available on all environments
+- **Istio data plane metrics** (`istio.io/service/server/*`) have descriptors registered but NO actual data — sidecar telemetry not enabled
+- **Load balancer metrics** — descriptors exist on prod but no data returned
+
+Decision: Use k8s container metrics which are universally available.
+
+**New files created**:
+- `dashboard/types/metrics.ts` — Types for `DataPoint`, `ServiceMetrics`, `MetricsResponse`
+- `dashboard/app/api/investigation/[incidentId]/metrics/route.ts` — API route that loads incident memory, fetches 6 metrics per service via MCP `list_time_series` (parallel), aggregates multi-pod time series, returns structured data
+- `dashboard/hooks/use-metrics.ts` — SWR hook polling every 30s
+- `dashboard/components/investigation/metric-chart.tsx` — Reusable recharts chart card (area + bar variants, multi-series support, custom dark-themed tooltip)
+- `dashboard/components/investigation/metrics-panel.tsx` — Collapsible 2-column grid with 6 charts per service, loading skeletons, localStorage-persisted collapse state
+
+**Modified files**:
+- `src/types/memory.ts` — Added optional `gcp_project` to `Metadata` (defaults to `alg-ai-platform-staging` when absent)
+- `dashboard/utils/mcp-tools.ts` — Added `callMcpTool()` for direct MCP tool calls outside the AI SDK `streamText` loop
+- `dashboard/app/globals.css` — Added 7 metric color CSS variables (dark + light theme)
+- `dashboard/components/investigation/investigation-panel.tsx` — Integrated MetricsPanel between TLDR and tabs via `next/dynamic` (SSR disabled for recharts)
+- `dashboard/package.json` — Added `recharts` dependency
+
+**6 metrics shown** (all `kubernetes.io/container/*`, filtered by `resource.labels.pod_name = starts_with("{service}")`):
+
+| Chart | Metric | Signal |
+|---|---|---|
+| CPU Utilization | `cpu/limit_utilization` (ALIGN_MEAN) | % of limit — saturation |
+| CPU Cores Used | `cpu/core_usage_time` (ALIGN_RATE) | Absolute load — spikes |
+| Memory Utilization | `memory/limit_utilization` (ALIGN_MEAN) | % of limit — OOM risk |
+| Memory Used | `memory/used_bytes` (ALIGN_MEAN) | Absolute bytes — leak detection |
+| Pod Restarts | `restart_count` (ALIGN_DELTA) | Stability — crashloops |
+| Uptime | `uptime` (ALIGN_MEAN) | Drops reveal restarts |
+
+**Alignment period** auto-adjusts: 60s (≤1h), 300s (≤6h), 600s (≤24h), 3600s (>24h). Minimum 1 hour of data shown even for brand-new incidents.
+
+### Bugs fixed during implementation
+
+1. **`alignmentPeriod` format**: GCP requires protobuf Duration format (`"300s"` not `"300"`). Was causing all metric queries to silently fail.
+2. **MCP `execute()` return format**: The AI SDK's MCP tool `execute()` returns a `CallToolResult` object (`{ content: [{ type: "text", text: "..." }] }`), not a plain string. Added `extractMcpText()` helper to unwrap the MCP response before JSON parsing.
+
+### Known limitations
+
+- **No request rate/error rate/latency charts**: Istio data plane metrics aren't available on these services. Would need Istio sidecar telemetry enabled or a different metrics source (e.g., application-level Prometheus metrics).
+- **`gcp_project` not set on incidents**: The agent doesn't currently set `metadata.gcp_project` when creating incidents. Falls back to `alg-ai-platform-staging`. For prod investigations, metrics will query staging unless the field is manually set. Needs a prompt update to have the agent set this field.
+
+### Next steps
+
+- Update `create_incident` tool and prompt to set `gcp_project` based on environment
+- Add Istio/LB metrics support once telemetry is enabled on the clusters
+- Consider adding request rate metrics from application-level sources (Datadog, custom metrics)
+- Manual testing of the full investigation flow with metrics visible

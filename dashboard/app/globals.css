@@ -21,6 +21,13 @@
   --status-investigating: #f59e0b;
   --status-resolved: #22c55e;
   --status-escalated: #ef4444;
+  --metric-request: #22d3ee;
+  --metric-error: #ef4444;
+  --metric-latency-p50: #a78bfa;
+  --metric-latency-p95: #f59e0b;
+  --metric-cpu: #22c55e;
+  --metric-memory: #3b82f6;
+  --metric-restarts: #f97316;
 }
 
 html.light {
@@ -44,6 +51,13 @@ html.light {
   --status-investigating: #d97706;
   --status-resolved: #16a34a;
   --status-escalated: #dc2626;
+  --metric-request: #0891b2;
+  --metric-error: #dc2626;
+  --metric-latency-p50: #7c3aed;
+  --metric-latency-p95: #d97706;
+  --metric-cpu: #16a34a;
+  --metric-memory: #2563eb;
+  --metric-restarts: #ea580c;
 }
 
 @theme inline {
@@ -67,6 +81,13 @@ html.light {
   --color-status-investigating: var(--status-investigating);
   --color-status-resolved: var(--status-resolved);
   --color-status-escalated: var(--status-escalated);
+  --color-metric-request: var(--metric-request);
+  --color-metric-error: var(--metric-error);
+  --color-metric-latency-p50: var(--metric-latency-p50);
+  --color-metric-latency-p95: var(--metric-latency-p95);
+  --color-metric-cpu: var(--metric-cpu);
+  --color-metric-memory: var(--metric-memory);
+  --color-metric-restarts: var(--metric-restarts);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

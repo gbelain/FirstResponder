@@ -21,6 +21,7 @@ export interface Metadata {
   severity: Severity;
   affected_services: string[];
   investigators: string[];
+  gcp_project?: string; // e.g., "alg-ai-platform-staging", "alg-ai-platform"
 }
 
 export interface TLDR {
