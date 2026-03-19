@@ -13,7 +13,13 @@ import type {
   Finding,
   FindingType,
 } from "../types/memory.js";
-import { loadMemory, saveMemory } from "./storage.js";
+import {
+  loadMemory,
+  saveMemory,
+  partialUpdate,
+  loadMemoryWithVersion,
+  saveMemoryVersioned,
+} from "./storage.js";
 import { saveRootCauseLearning, saveRuledOutLearning } from "./learnings.js";
 
 function utcNow(): string {
@@ -26,9 +32,37 @@ function generateIncidentId(): string {
   return `inc_${timestamp}_${random}`;
 }
 
-function generateHypothesisId(memory: IncidentMemory): string {
-  const count = memory.hypotheses.length + 1;
-  return `hyp_${count}`;
+function generateHypothesisId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 6);
+  return `hyp_${timestamp}_${random}`;
+}
+
+// --- Optimistic Lock Helper ---
+
+async function withOptimisticLock(
+  incidentId: string,
+  mutateFn: (memory: IncidentMemory) => void,
+  maxRetries = 3
+): Promise<IncidentMemory> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const result = await loadMemoryWithVersion(incidentId);
+    if (!result) {
+      throw new Error(`Incident ${incidentId} not found`);
+    }
+
+    const { memory, version } = result;
+    mutateFn(memory);
+
+    const saveResult = await saveMemoryVersioned(memory, version);
+    if (saveResult.success) {
+      return memory;
+    }
+    // Version conflict — retry
+  }
+  throw new Error(
+    `Failed to save incident ${incidentId} after ${maxRetries} retries (version conflict)`
+  );
 }
 
 // --- Incident Creation ---
@@ -51,7 +85,7 @@ export async function createIncident(params: CreateIncidentParams): Promise<Inci
       status: "investigating",
       severity: params.severity,
       affected_services: params.affected_services,
-      investigator: params.investigator,
+      investigators: [params.investigator],
     },
     tldr: {
       summary: params.initial_description,
@@ -63,10 +97,13 @@ export async function createIncident(params: CreateIncidentParams): Promise<Inci
         event: "Investigation started",
         source: "user",
         details: params.initial_description,
+        reported_by: params.investigator,
       },
     ],
     hypotheses: [],
     findings: [],
+    _version: 1,
+    active_investigators: [],
   };
 
   await saveMemory(memory);
@@ -81,6 +118,7 @@ export interface AddTimelineEventParams {
   source: EventSource;
   details: string;
   timestamp?: string; // Optional, defaults to now
+  reported_by?: string;
 }
 
 export async function addTimelineEvent(params: AddTimelineEventParams): Promise<IncidentMemory> {
@@ -94,12 +132,13 @@ export async function addTimelineEvent(params: AddTimelineEventParams): Promise<
     event: params.event,
     source: params.source,
     details: params.details,
+    reported_by: params.reported_by,
   };
 
   memory.timeline.push(newEvent);
   memory.timeline.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-  await saveMemory(memory);
+  await partialUpdate(params.incident_id, { timeline: memory.timeline });
   return memory;
 }
 
@@ -108,7 +147,7 @@ export async function addTimelineEvent(params: AddTimelineEventParams): Promise<
 export interface ProposeHypothesisParams {
   incident_id: string;
   title: string;
-  proposed_by: "agent" | "user";
+  proposed_by: string;
   initial_evidence: string[];
   confidence: Confidence;
 }
@@ -120,7 +159,7 @@ export async function proposeHypothesis(params: ProposeHypothesisParams): Promis
   }
 
   const hypothesis: Hypothesis = {
-    id: generateHypothesisId(memory),
+    id: generateHypothesisId(),
     title: params.title,
     proposed_at: utcNow(),
     proposed_by: params.proposed_by,
@@ -131,7 +170,7 @@ export async function proposeHypothesis(params: ProposeHypothesisParams): Promis
   };
 
   memory.hypotheses.push(hypothesis);
-  await saveMemory(memory);
+  await partialUpdate(params.incident_id, { hypotheses: memory.hypotheses });
   return memory;
 }
 
@@ -144,28 +183,22 @@ export interface UpdateHypothesisParams {
 }
 
 export async function updateHypothesis(params: UpdateHypothesisParams): Promise<IncidentMemory> {
-  const memory = await loadMemory(params.incident_id);
-  if (!memory) {
-    throw new Error(`Incident ${params.incident_id} not found`);
-  }
+  return withOptimisticLock(params.incident_id, (memory) => {
+    const hypothesis = memory.hypotheses.find((h) => h.id === params.hypothesis_id);
+    if (!hypothesis) {
+      throw new Error(`Hypothesis ${params.hypothesis_id} not found`);
+    }
 
-  const hypothesis = memory.hypotheses.find((h) => h.id === params.hypothesis_id);
-  if (!hypothesis) {
-    throw new Error(`Hypothesis ${params.hypothesis_id} not found`);
-  }
-
-  if (params.add_supporting_evidence) {
-    hypothesis.supporting_evidence.push(...params.add_supporting_evidence);
-  }
-  if (params.add_counter_evidence) {
-    hypothesis.counter_evidence.push(...params.add_counter_evidence);
-  }
-  if (params.new_confidence) {
-    hypothesis.confidence = params.new_confidence;
-  }
-
-  await saveMemory(memory);
-  return memory;
+    if (params.add_supporting_evidence) {
+      hypothesis.supporting_evidence.push(...params.add_supporting_evidence);
+    }
+    if (params.add_counter_evidence) {
+      hypothesis.counter_evidence.push(...params.add_counter_evidence);
+    }
+    if (params.new_confidence) {
+      hypothesis.confidence = params.new_confidence;
+    }
+  });
 }
 
 export interface RuleOutHypothesisParams {
@@ -175,24 +208,20 @@ export interface RuleOutHypothesisParams {
 }
 
 export async function ruleOutHypothesis(params: RuleOutHypothesisParams): Promise<IncidentMemory> {
-  const memory = await loadMemory(params.incident_id);
-  if (!memory) {
-    throw new Error(`Incident ${params.incident_id} not found`);
-  }
+  const memory = await withOptimisticLock(params.incident_id, (m) => {
+    const hypothesis = m.hypotheses.find((h) => h.id === params.hypothesis_id);
+    if (!hypothesis) {
+      throw new Error(`Hypothesis ${params.hypothesis_id} not found`);
+    }
 
-  const hypothesis = memory.hypotheses.find((h) => h.id === params.hypothesis_id);
-  if (!hypothesis) {
-    throw new Error(`Hypothesis ${params.hypothesis_id} not found`);
-  }
-
-  const now = utcNow();
-  hypothesis.status = "ruled_out";
-  hypothesis.ruled_out_at = now;
-  hypothesis.ruled_out_reason = params.reason;
-
-  await saveMemory(memory);
+    const now = utcNow();
+    hypothesis.status = "ruled_out";
+    hypothesis.ruled_out_at = now;
+    hypothesis.ruled_out_reason = params.reason;
+  });
 
   // Fire-and-forget: save learning to Agent Studio memory
+  const hypothesis = memory.hypotheses.find((h) => h.id === params.hypothesis_id)!;
   saveRuledOutLearning(params.incident_id, hypothesis, params.reason, memory.metadata.affected_services);
 
   return memory;
@@ -204,34 +233,30 @@ export interface ConfirmRootCauseParams {
 }
 
 export async function confirmRootCause(params: ConfirmRootCauseParams): Promise<IncidentMemory> {
-  const memory = await loadMemory(params.incident_id);
-  if (!memory) {
-    throw new Error(`Incident ${params.incident_id} not found`);
-  }
+  const memory = await withOptimisticLock(params.incident_id, (m) => {
+    const hypothesis = m.hypotheses.find((h) => h.id === params.hypothesis_id);
+    if (!hypothesis) {
+      throw new Error(`Hypothesis ${params.hypothesis_id} not found`);
+    }
 
-  const hypothesis = memory.hypotheses.find((h) => h.id === params.hypothesis_id);
-  if (!hypothesis) {
-    throw new Error(`Hypothesis ${params.hypothesis_id} not found`);
-  }
+    hypothesis.status = "confirmed_root_cause";
+    m.metadata.status = "resolved";
 
-  hypothesis.status = "confirmed_root_cause";
-  memory.metadata.status = "resolved";
+    // Update TLDR
+    m.tldr.summary = `Root cause confirmed: ${hypothesis.title}`;
+    m.tldr.last_updated = utcNow();
 
-  // Update TLDR
-  memory.tldr.summary = `Root cause confirmed: ${hypothesis.title}`;
-  memory.tldr.last_updated = utcNow();
-
-  // Add timeline event
-  memory.timeline.push({
-    timestamp: utcNow(),
-    event: "Root cause confirmed",
-    source: "user",
-    details: hypothesis.title,
+    // Add timeline event
+    m.timeline.push({
+      timestamp: utcNow(),
+      event: "Root cause confirmed",
+      source: "user",
+      details: hypothesis.title,
+    });
   });
 
-  await saveMemory(memory);
-
   // Fire-and-forget: save learning to Agent Studio memory
+  const hypothesis = memory.hypotheses.find((h) => h.id === params.hypothesis_id)!;
   saveRootCauseLearning(params.incident_id, hypothesis, memory.metadata.affected_services);
 
   return memory;
@@ -246,6 +271,7 @@ export interface AddFindingParams {
   service: string;
   timestamp: string;
   value?: string;
+  discovered_by?: string;
 }
 
 export async function addFinding(params: AddFindingParams): Promise<IncidentMemory> {
@@ -260,10 +286,11 @@ export async function addFinding(params: AddFindingParams): Promise<IncidentMemo
     service: params.service,
     timestamp: params.timestamp,
     value: params.value,
+    discovered_by: params.discovered_by,
   };
 
   memory.findings.push(finding);
-  await saveMemory(memory);
+  await partialUpdate(params.incident_id, { findings: memory.findings });
   return memory;
 }
 
@@ -275,16 +302,35 @@ export interface UpdateTLDRParams {
 }
 
 export async function updateTLDR(params: UpdateTLDRParams): Promise<IncidentMemory> {
-  const memory = await loadMemory(params.incident_id);
-  if (!memory) {
-    throw new Error(`Incident ${params.incident_id} not found`);
-  }
+  return withOptimisticLock(params.incident_id, (memory) => {
+    memory.tldr.summary = params.summary;
+    memory.tldr.last_updated = utcNow();
+  });
+}
 
-  memory.tldr.summary = params.summary;
-  memory.tldr.last_updated = utcNow();
+// --- Active Investigator Tracking ---
 
-  await saveMemory(memory);
-  return memory;
+export async function updateActiveInvestigator(
+  incidentId: string,
+  name: string
+): Promise<void> {
+  const memory = await loadMemory(incidentId);
+  if (!memory) return;
+
+  // Update active investigators list
+  const now = utcNow();
+  const active = memory.active_investigators.filter((inv) => inv.name !== name);
+  active.push({ name, last_seen: now });
+
+  // Ensure this name is in metadata.investigators
+  const investigators = memory.metadata.investigators.includes(name)
+    ? memory.metadata.investigators
+    : [...memory.metadata.investigators, name];
+
+  await partialUpdate(incidentId, {
+    active_investigators: active,
+    metadata: { ...memory.metadata, investigators },
+  });
 }
 
 // --- Read Operations ---

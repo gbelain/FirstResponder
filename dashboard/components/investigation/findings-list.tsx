@@ -64,6 +64,9 @@ export function FindingsList({ findings }: { findings: Finding[] }) {
                     })}{" "}
                     UTC
                   </span>
+                  {finding.discovered_by && (
+                    <span className="text-text-muted">by {finding.discovered_by}</span>
+                  )}
                 </div>
               </div>
             ))}

@@ -19,11 +19,16 @@ export function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           {isConfirmed && <span className="text-confidence-high text-sm">&#10003;</span>}
-          <h4
-            className={`text-xs font-mono font-medium ${isRuledOut ? "line-through text-text-muted" : "text-text-primary"}`}
-          >
-            {hypothesis.title}
-          </h4>
+          <div>
+            <h4
+              className={`text-xs font-mono font-medium ${isRuledOut ? "line-through text-text-muted" : "text-text-primary"}`}
+            >
+              {hypothesis.title}
+            </h4>
+            <span className="text-[10px] font-mono text-text-muted">
+              by {hypothesis.proposed_by}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <ConfidenceBadge confidence={hypothesis.confidence} />

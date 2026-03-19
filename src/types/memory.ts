@@ -10,12 +10,17 @@ export type Confidence = "high" | "medium" | "low";
 export type EventSource = "logs" | "user" | "agent" | "metrics";
 export type FindingType = "error" | "metric" | "config_change";
 
+export interface ActiveInvestigator {
+  name: string;
+  last_seen: string; // ISO 8601 UTC
+}
+
 export interface Metadata {
   started_at: string; // ISO 8601 UTC
   status: IncidentStatus;
   severity: Severity;
   affected_services: string[];
-  investigator: string;
+  investigators: string[];
 }
 
 export interface TLDR {
@@ -28,13 +33,14 @@ export interface TimelineEvent {
   event: string;
   source: EventSource;
   details: string;
+  reported_by?: string;
 }
 
 export interface Hypothesis {
   id: string;
   title: string;
   proposed_at: string; // ISO 8601 UTC
-  proposed_by: "agent" | "user";
+  proposed_by: string; // investigator name or "agent"
   status: HypothesisStatus;
   confidence: Confidence;
   supporting_evidence: string[];
@@ -49,6 +55,7 @@ export interface Finding {
   service: string;
   timestamp: string; // ISO 8601 UTC
   value?: string; // Optional additional info (count, metric value, etc.)
+  discovered_by?: string;
 }
 
 export interface IncidentMemory {
@@ -59,4 +66,6 @@ export interface IncidentMemory {
   timeline: TimelineEvent[];
   hypotheses: Hypothesis[];
   findings: Finding[];
+  _version: number;
+  active_investigators: ActiveInvestigator[];
 }
