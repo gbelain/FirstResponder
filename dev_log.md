@@ -426,3 +426,98 @@ All file I/O was isolated in a single 65-line file: `src/memory/storage.ts`. It 
 - Deploy dashboard to Vercel (MCP subprocess lifecycle needs addressing for serverless)
 - Phase 4: Multi-user collaboration
 - Monitor Algolia record sizes as investigations grow
+
+## 2026-03-19 — Session 9: Multi-User Collaboration (Phase 4)
+
+### Goal
+
+Enable multiple engineers to investigate the same incident simultaneously, each in their own chat session, with shared incident state in Algolia. Findings, hypotheses, and timeline events from one engineer are visible to all others.
+
+### Step 0: Merge main into multi-user-collaboration branch
+
+Brought in Algolia storage (`src/memory/storage.ts`), `algoliasearch` dependency from Session 8. Clean merge, no conflicts.
+
+### Step 1: Data model changes (`src/types/memory.ts`)
+
+- Added `ActiveInvestigator` interface (`name` + `last_seen` timestamp)
+- Replaced `metadata.investigator: string` with `metadata.investigators: string[]`
+- Added `_version: number` and `active_investigators: ActiveInvestigator[]` to `IncidentMemory`
+- Changed `hypothesis.proposed_by` from `"agent" | "user"` enum to `string` (now carries investigator name or `"agent"`)
+- Added optional `finding.discovered_by` and `timelineEvent.reported_by` fields
+
+### Step 2: Storage layer (`src/memory/storage.ts`)
+
+- **`partialUpdate(incidentId, fields)`**: Uses `partialUpdateObjects` to write only specified top-level fields. Two engineers writing to different fields (one to `timeline`, one to `findings`) won't overwrite each other.
+- **`loadMemoryWithVersion(incidentId)`**: Returns `{ memory, version }` preserving `_version` for optimistic locking.
+- **`saveMemoryVersioned(memory, expectedVersion)`**: Read-check-write pattern — returns `{ success: false }` on version mismatch. Small race window acceptable for 2-5 engineers.
+- **Backward compatibility**: `migrateRecord()` converts legacy `investigator` → `investigators[]`, defaults `_version` to 0 and `active_investigators` to `[]`.
+
+### Step 3: Operations layer (`src/memory/operations.ts`)
+
+**Concurrency strategy** — two tiers:
+1. **Append operations** (`addTimelineEvent`, `proposeHypothesis`, `addFinding`): Use `partialUpdate` for field-level writes. Only overwrites the specific array field, not the whole record.
+2. **Mutation operations** (`updateHypothesis`, `ruleOutHypothesis`, `confirmRootCause`, `updateTLDR`): Wrapped in `withOptimisticLock(incidentId, mutateFn, maxRetries=3)` — load with version, mutate, versioned save, retry on conflict.
+
+Other changes:
+- `generateHypothesisId()` now uses timestamp+random (was sequential `hyp_1`, `hyp_2` — collision-prone with multiple concurrent agents)
+- `createIncident()` sets `investigators: [name]`, `_version: 1`, `reported_by` on initial timeline event
+- New `updateActiveInvestigator(incidentId, name)` — updates presence tracking + ensures name in investigators list via `partialUpdate`
+
+### Step 4: Tool definitions
+
+**Dashboard** (`dashboard/utils/tools.ts`):
+- Converted `export const memoryTools` → `export function createMemoryTools(userName: string)` factory
+- `create_incident` auto-injects `investigator: userName` (removed from agent schema)
+- `add_timeline_event` injects `reported_by: userName`
+- `add_finding` injects `discovered_by: userName`
+- `propose_hypothesis` schema changed from `z.enum(["agent","user"])` to `z.string()`
+
+**CLI** (`src/tools/memory-tools.ts`):
+- Updated schemas: `proposed_by` → string, added `discovered_by` and `reported_by` fields
+- Updated execute handlers to pass new fields through
+
+### Step 5: Chat API route (`dashboard/app/api/chat/route.ts`)
+
+- Accepts `userName` from request body
+- Calls `updateActiveInvestigator(incidentId, userName)` fire-and-forget on each request
+- Builds user-aware tools via `createMemoryTools(userName)`
+- Injects investigator identity + multi-user awareness instructions into system prompt
+
+### Step 6: System prompt (`src/agent/prompt.ts`)
+
+Added "Multi-Investigator Awareness" section: check for existing findings before querying, check for duplicate hypotheses, reference other investigators' work, attribution fields explained.
+
+### Step 7: Frontend — user identity
+
+- **`dashboard/hooks/use-user-name.ts`** (new): `useUserName()` hook backed by `localStorage` key `fr-user-name`. Uses `useSyncExternalStore` for SSR safety.
+- **`dashboard/components/ui/name-dialog.tsx`** (new): Modal overlay prompting for display name on first visit. Matches existing dark theme.
+- **`dashboard/app/investigation/[incidentId]/page.tsx`**: Gates on `useUserName()` — shows `NameDialog` when null, passes `userName` to `ChatPanel`.
+- **`dashboard/components/chat/chat-panel.tsx`**: Accepts `userName` prop, includes it in `DefaultChatTransport` body.
+
+### Step 8: Frontend — attribution + active investigators
+
+- **`metadata-bar.tsx`**: Replaced `incident.metadata.investigator` with `investigators.join(", ")`. Added active investigator badges with green pulsing dots (filtered to `last_seen` < 30s ago).
+- **`hypothesis-card.tsx`**: Shows `proposed_by` attribution below hypothesis title.
+- **`findings-list.tsx`**: Shows `discovered_by` attribution in each finding card.
+
+### Verification
+
+- `npm run typecheck` (root): passes
+- `tsc --noEmit` (dashboard): passes
+- `tsc` (root build): passes
+- `next build --webpack` (dashboard): compiles successfully
+
+### Key design decisions
+
+- **Field-level writes for appends**: `partialUpdate` narrows the write scope — two engineers adding to different arrays (`timeline` vs `findings`) simultaneously won't overwrite each other. Full saves reserved for mutations that touch multiple fields.
+- **Optimistic locking for mutations**: `_version` field with read-check-write. Small race window between read and write is acceptable for the expected concurrency (2-5 engineers).
+- **No auth**: Display name in localStorage. Sufficient for internal tool — real auth is out of scope.
+- **Chat stays in sessionStorage**: Each engineer has their own chat history. Incident state (the shared data) lives in Algolia.
+- **Passive cross-thread awareness**: Agent calls `get_incident` before writes to see fresh state. No push notifications between sessions — the 1.5s SWR polling on the investigation panel handles visibility.
+
+### Next steps
+
+- Manual multi-user testing: two browser windows, different names, same incident
+- Concurrency stress test: simultaneous writes from multiple sessions
+- Deploy to Vercel
+- Consider WebSocket/SSE for real-time cross-session updates (currently 1.5s polling)

@@ -27,15 +27,16 @@ function saveMessages(incidentId: string, messages: UIMessage[]) {
 
 interface ChatPanelProps {
   incidentId: string;
+  userName: string;
   onIncidentCreated?: (incidentId: string) => void;
 }
 
-export function ChatPanel({ incidentId, onIncidentCreated }: ChatPanelProps) {
+export function ChatPanel({ incidentId, userName, onIncidentCreated }: ChatPanelProps) {
   const [hasMounted, setHasMounted] = useState(false);
 
   const transport = useMemo(
-    () => new DefaultChatTransport({ body: { incidentId } }),
-    [incidentId]
+    () => new DefaultChatTransport({ body: { incidentId, userName } }),
+    [incidentId, userName]
   );
 
   const { messages, sendMessage, status, setMessages } = useChat({

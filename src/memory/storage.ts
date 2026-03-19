@@ -36,9 +36,31 @@ function isNotFoundError(error: unknown): boolean {
   );
 }
 
-function stripAlgoliaFields(record: Record<string, unknown>): IncidentMemory {
+/**
+ * Migrate legacy records that have `investigator` (string) instead of
+ * `investigators` (array), and fill in missing multi-user fields.
+ */
+function migrateRecord(record: Record<string, unknown>): IncidentMemory {
   const { objectID, _highlightResult, _snippetResult, _rankingInfo, ...rest } =
     record;
+
+  // Migrate investigator → investigators
+  const metadata = rest.metadata as Record<string, unknown> | undefined;
+  if (metadata && !metadata.investigators && metadata.investigator) {
+    metadata.investigators = [metadata.investigator as string];
+    delete metadata.investigator;
+  }
+
+  // Ensure _version
+  if (rest._version === undefined || rest._version === null) {
+    rest._version = 0;
+  }
+
+  // Ensure active_investigators
+  if (!Array.isArray(rest.active_investigators)) {
+    rest.active_investigators = [];
+  }
+
   return rest as unknown as IncidentMemory;
 }
 
@@ -54,13 +76,21 @@ export async function loadMemory(
       indexName: getIndexName(),
       objectID: incidentId,
     });
-    return stripAlgoliaFields(record as Record<string, unknown>);
+    return migrateRecord(record as Record<string, unknown>);
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;
     }
     throw error;
   }
+}
+
+export async function loadMemoryWithVersion(
+  incidentId: string
+): Promise<{ memory: IncidentMemory; version: number } | null> {
+  const memory = await loadMemory(incidentId);
+  if (!memory) return null;
+  return { memory, version: memory._version };
 }
 
 export async function saveMemory(memory: IncidentMemory): Promise<void> {
@@ -70,6 +100,55 @@ export async function saveMemory(memory: IncidentMemory): Promise<void> {
       objectID: memory.incident_id,
       ...memory,
     },
+  });
+}
+
+export async function saveMemoryVersioned(
+  memory: IncidentMemory,
+  expectedVersion: number
+): Promise<{ success: boolean }> {
+  // Read current version
+  try {
+    const record = await getClient().getObject({
+      indexName: getIndexName(),
+      objectID: memory.incident_id,
+      attributesToRetrieve: ["_version"],
+    });
+    const currentVersion =
+      (record as Record<string, unknown>)._version ?? 0;
+    if (currentVersion !== expectedVersion) {
+      return { success: false };
+    }
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      // Object doesn't exist yet, allow version 0
+      if (expectedVersion !== 0) return { success: false };
+    } else {
+      throw error;
+    }
+  }
+
+  memory._version = expectedVersion + 1;
+  await saveMemory(memory);
+  return { success: true };
+}
+
+/**
+ * Partial update — writes only the specified top-level fields, leaving others
+ * untouched. Uses Algolia's partialUpdateObjects under the hood.
+ */
+export async function partialUpdate(
+  incidentId: string,
+  fields: Record<string, unknown>
+): Promise<void> {
+  await getClient().partialUpdateObjects({
+    indexName: getIndexName(),
+    objects: [
+      {
+        objectID: incidentId,
+        ...fields,
+      },
+    ],
   });
 }
 

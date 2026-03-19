@@ -106,6 +106,10 @@ export const memoryTools: Tool[] = [
           type: "string",
           description: "ISO 8601 UTC timestamp. If omitted, uses current time.",
         },
+        reported_by: {
+          type: "string",
+          description: "Name of the investigator reporting this event",
+        },
       },
       required: ["incident_id", "event", "source", "details"],
     },
@@ -127,8 +131,7 @@ export const memoryTools: Tool[] = [
         },
         proposed_by: {
           type: "string",
-          enum: ["agent", "user"],
-          description: "Who proposed this hypothesis",
+          description: "Who proposed this hypothesis (investigator name or 'agent')",
         },
         initial_evidence: {
           type: "array",
@@ -247,6 +250,10 @@ export const memoryTools: Tool[] = [
           type: "string",
           description: "ISO 8601 UTC timestamp of when this was observed",
         },
+        discovered_by: {
+          type: "string",
+          description: "Name of the investigator who discovered this finding",
+        },
         value: {
           type: "string",
           description: "Optional additional value (e.g., '847 occurrences', 'spike from 150 to 2400')",
@@ -353,13 +360,14 @@ export async function executeMemoryTool(
         source: toolInput.source as "logs" | "user" | "agent" | "metrics",
         details: toolInput.details as string,
         timestamp: toolInput.timestamp as string | undefined,
+        reported_by: toolInput.reported_by as string | undefined,
       });
 
     case "propose_hypothesis":
       return proposeHypothesis({
         incident_id: toolInput.incident_id as string,
         title: toolInput.title as string,
-        proposed_by: toolInput.proposed_by as "agent" | "user",
+        proposed_by: toolInput.proposed_by as string,
         initial_evidence: toolInput.initial_evidence as string[],
         confidence: toolInput.confidence as "high" | "medium" | "low",
       });
@@ -394,6 +402,7 @@ export async function executeMemoryTool(
         service: toolInput.service as string,
         timestamp: toolInput.timestamp as string,
         value: toolInput.value as string | undefined,
+        discovered_by: toolInput.discovered_by as string | undefined,
       });
 
     case "update_tldr":
