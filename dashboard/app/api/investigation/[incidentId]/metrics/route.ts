@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadMemory } from "@/utils/memory/storage";
-import { callMcpTool } from "@/utils/mcp-tools";
+import { listTimeSeries } from "@/utils/gcp/monitoring";
+import type { ListTimeSeriesResponse } from "@/utils/gcp/types";
 import type { DataPoint, ServiceMetrics, MetricsResponse } from "@/types/metrics";
 
 const DEFAULT_PROJECT = "alg-ai-platform-staging";
@@ -21,63 +22,24 @@ function buildFilter(metricType: string, service: string, extra?: string): strin
   return f;
 }
 
-/**
- * Extract the JSON text from an MCP CallToolResult.
- * The execute() function returns { content: [{ type: "text", text: "..." }] }
- */
-function extractMcpText(raw: unknown): string | null {
-  if (typeof raw === "string") return raw;
-  if (raw && typeof raw === "object" && "content" in raw) {
-    const content = (raw as { content: unknown[] }).content;
-    if (Array.isArray(content)) {
-      const text = content.find(
-        (c): c is { type: string; text: string } =>
-          typeof c === "object" && c !== null && (c as Record<string, unknown>).type === "text"
-      );
-      if (text) return text.text;
-    }
-  }
-  return null;
-}
-
 function parseTimeSeries(
-  raw: unknown,
+  response: ListTimeSeriesResponse | null,
   aggregation: "sum" | "mean" | "max"
 ): DataPoint[] {
-  let timeSeries: unknown[];
-  try {
-    const text = extractMcpText(raw);
-    if (text) {
-      const parsed = JSON.parse(text);
-      timeSeries = Array.isArray(parsed) ? parsed : parsed.timeSeries ?? [];
-    } else if (Array.isArray(raw)) {
-      timeSeries = raw;
-    } else {
-      return [];
-    }
-  } catch {
-    return [];
-  }
-
-  if (timeSeries.length === 0) return [];
+  const timeSeries = response?.timeSeries;
+  if (!timeSeries || timeSeries.length === 0) return [];
 
   // Group all points by timestamp across all time series
   const byTime = new Map<string, number[]>();
 
   for (const series of timeSeries) {
-    const points = (series as Record<string, unknown>).points;
-    if (!Array.isArray(points)) continue;
+    if (!series.points) continue;
 
-    for (const point of points) {
-      const p = point as Record<string, unknown>;
-      const interval = p.interval as Record<string, string> | undefined;
-      const ts = interval?.endTime;
+    for (const point of series.points) {
+      const ts = point.interval?.endTime;
       if (!ts) continue;
 
-      const val = p.value as Record<string, unknown> | undefined;
-      const value =
-        (val?.doubleValue as number) ??
-        Number(val?.int64Value ?? 0);
+      const value = point.value?.doubleValue ?? Number(point.value?.int64Value ?? 0);
 
       if (!byTime.has(ts)) byTime.set(ts, []);
       byTime.get(ts)!.push(value);
@@ -108,8 +70,8 @@ async function fetchMetric(
   endTime: string,
   aligner: string,
   alignmentPeriod: string
-): Promise<unknown> {
-  return callMcpTool("list_time_series", {
+): Promise<ListTimeSeriesResponse> {
+  return listTimeSeries({
     name: `projects/${project}`,
     filter,
     interval: { startTime, endTime },
@@ -218,7 +180,7 @@ export async function GET(
 
       const results = await Promise.allSettled(queries);
 
-      const extract = (r: PromiseSettledResult<unknown>) =>
+      const extract = (r: PromiseSettledResult<ListTimeSeriesResponse>): ListTimeSeriesResponse | null =>
         r.status === "fulfilled" ? r.value : null;
 
       const metrics: ServiceMetrics = {

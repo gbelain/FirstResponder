@@ -2,7 +2,7 @@ import { streamText, stepCountIs, convertToModelMessages } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { SYSTEM_PROMPT } from "@/utils/agent/prompt";
 import { createMemoryTools } from "@/utils/tools";
-import { loadMcpTools } from "@/utils/mcp-tools";
+import { createGcpTools } from "@/utils/gcp-tools";
 import { loadMemory } from "@/utils/memory/storage";
 import { updateActiveInvestigator } from "@/utils/memory/operations";
 
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     updateActiveInvestigator(incidentId, resolvedName).catch(() => {});
   }
 
-  const mcpTools = await loadMcpTools();
+  const gcpTools = createGcpTools();
   const userTools = createMemoryTools(resolvedName);
 
   let systemPrompt = SYSTEM_PROMPT;
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     model: anthropic("claude-sonnet-4-5-20250929"),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
-    tools: { ...userTools, ...mcpTools },
+    tools: { ...userTools, ...gcpTools },
     stopWhen: stepCountIs(20),
   });
 

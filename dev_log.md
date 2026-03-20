@@ -630,3 +630,41 @@ The dashboard imported shared code from `../src/*` through a `@shared` TypeScrip
 ### Deployment
 
 Vercel can now deploy from `dashboard/` with root directory set to `dashboard/`. Required env vars: `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `ALGOLIA_INDEX_NAME`, `ANTHROPIC_API_KEY`.
+
+## 2026-03-20 — Session 12: Replace MCP stdio with direct GCP REST API calls
+
+### Goal
+
+Replace the MCP stdio child process (`@google-cloud/observability-mcp` via `npx`) with direct GCP REST API calls. MCP subprocess model doesn't work on Vercel serverless (no persistent process, no `npx`, no local gcloud credentials).
+
+### Approach
+
+Lightweight REST: `google-auth-library` + `fetch` to GCP Logging v2 and Monitoring v3 REST APIs. Avoided `@google-cloud/logging` / `@google-cloud/monitoring` because they pull in `google-gax` → gRPC native bindings, problematic for serverless cold starts and bundle size.
+
+### New files
+
+- `dashboard/utils/gcp/auth.ts` — Singleton `GoogleAuth`, reads `GCP_SERVICE_ACCOUNT_KEY` env var (JSON string) for Vercel, falls back to ADC for local dev
+- `dashboard/utils/gcp/types.ts` — TypeScript types for Logging & Monitoring REST API responses
+- `dashboard/utils/gcp/logging.ts` — `listLogEntries()` via `POST /v2/entries:list`
+- `dashboard/utils/gcp/monitoring.ts` — `listTimeSeries()`, `listMetricDescriptors()`, `listAlertPolicies()` via Monitoring v3 REST
+- `dashboard/utils/gcp-tools.ts` — AI SDK `tool()` definitions: `list_log_entries`, `list_time_series`, `list_metric_descriptors`, `list_alert_policies`
+
+### Modified files
+
+- `dashboard/app/api/chat/route.ts` — `loadMcpTools` → `createGcpTools`
+- `dashboard/app/api/investigation/[incidentId]/metrics/route.ts` — Uses `listTimeSeries` directly, removed `extractMcpText` / MCP response unwrapping, typed with `ListTimeSeriesResponse`
+- `dashboard/next.config.ts` — Removed `serverExternalPackages`
+- `dashboard/package.json` — Added `google-auth-library`, removed `@ai-sdk/mcp` + `@modelcontextprotocol/sdk`
+
+### Deleted
+
+- `dashboard/utils/mcp-tools.ts`
+
+### Env vars for Vercel
+
+`GCP_SERVICE_ACCOUNT_KEY`, `ANTHROPIC_API_KEY`, `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `ALGOLIA_INDEX_NAME`, `MEMORY_API_APP_ID`, `MEMORY_API_KEY`, `MEMORY_API_USER_TOKEN` (optional), `MEMORY_API_BASE_URL` (optional).
+
+### Verification
+
+- `npm run build` — clean
+- `npm run dev` — agent queries GCP logs successfully via REST, metrics charts load
