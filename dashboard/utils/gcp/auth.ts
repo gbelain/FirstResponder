@@ -11,6 +11,10 @@ function getAuth(): GoogleAuth {
   if (keyJson) {
     // Vercel / CI: credentials from env var (JSON string)
     const credentials = JSON.parse(keyJson);
+    // Vercel's env var UI double-escapes \n in the private key — fix them
+    if (credentials.private_key) {
+      credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+    }
     authInstance = new GoogleAuth({ credentials, scopes: SCOPES });
   } else {
     // Local dev: Application Default Credentials (gcloud auth)
