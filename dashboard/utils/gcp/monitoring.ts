@@ -1,4 +1,4 @@
-import { getAccessToken } from "./auth";
+import { gcpGet } from "./auth";
 import type {
   ListTimeSeriesResponse,
   ListMetricDescriptorsResponse,
@@ -6,28 +6,6 @@ import type {
 } from "./types";
 
 const MONITORING_API = "https://monitoring.googleapis.com/v3";
-
-async function gcpFetch(url: string, token: string, init?: RequestInit): Promise<string> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...init?.headers,
-    },
-    cache: "no-store",
-  });
-
-  console.log(`[gcp-monitoring] status=${res.status} url=${res.url} content-type=${res.headers.get("content-type")}`);
-
-  const text = await res.text();
-
-  if (!res.ok) {
-    console.error(`[gcp-monitoring] error body: ${text.substring(0, 500)}`);
-    throw new Error(`Cloud Monitoring API error ${res.status}: ${text}`);
-  }
-
-  return text;
-}
 
 // ---- Time Series ----
 
@@ -48,8 +26,6 @@ export interface ListTimeSeriesParams {
 export async function listTimeSeries(
   params: ListTimeSeriesParams
 ): Promise<ListTimeSeriesResponse> {
-  const token = await getAccessToken();
-
   const qs = new URLSearchParams();
   qs.set("filter", params.filter);
   qs.set("interval.startTime", params.interval.startTime);
@@ -60,7 +36,6 @@ export async function listTimeSeries(
   if (params.aggregation) {
     const agg = params.aggregation;
     if (agg.alignmentPeriod) {
-      // Normalize: ensure it ends with "s"
       const period = agg.alignmentPeriod.endsWith("s")
         ? agg.alignmentPeriod
         : `${agg.alignmentPeriod}s`;
@@ -76,8 +51,7 @@ export async function listTimeSeries(
   }
 
   const url = `${MONITORING_API}/${params.name}/timeSeries?${qs.toString()}`;
-  const text = await gcpFetch(url, token);
-  const data = JSON.parse(text) as ListTimeSeriesResponse;
+  const data = await gcpGet<ListTimeSeriesResponse>(url);
   console.log(`[gcp-monitoring] returned ${data.timeSeries?.length ?? 0} time series`);
   return data;
 }
@@ -94,16 +68,13 @@ export interface ListMetricDescriptorsParams {
 export async function listMetricDescriptors(
   params: ListMetricDescriptorsParams
 ): Promise<ListMetricDescriptorsResponse> {
-  const token = await getAccessToken();
-
   const qs = new URLSearchParams();
   if (params.filter) qs.set("filter", params.filter);
   if (params.pageSize) qs.set("pageSize", String(params.pageSize));
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/metricDescriptors?${qs.toString()}`;
-  const text = await gcpFetch(url, token);
-  return JSON.parse(text) as ListMetricDescriptorsResponse;
+  return gcpGet<ListMetricDescriptorsResponse>(url);
 }
 
 // ---- Alert Policies ----
@@ -118,14 +89,11 @@ export interface ListAlertPoliciesParams {
 export async function listAlertPolicies(
   params: ListAlertPoliciesParams
 ): Promise<ListAlertPoliciesResponse> {
-  const token = await getAccessToken();
-
   const qs = new URLSearchParams();
   if (params.filter) qs.set("filter", params.filter);
   if (params.pageSize) qs.set("pageSize", String(params.pageSize));
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/alertPolicies?${qs.toString()}`;
-  const text = await gcpFetch(url, token);
-  return JSON.parse(text) as ListAlertPoliciesResponse;
+  return gcpGet<ListAlertPoliciesResponse>(url);
 }

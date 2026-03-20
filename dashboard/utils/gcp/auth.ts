@@ -1,4 +1,5 @@
 import { GoogleAuth } from "google-auth-library";
+import type { AuthClient } from "google-auth-library";
 
 const SCOPES = ["https://www.googleapis.com/auth/cloud-platform"];
 
@@ -9,10 +10,8 @@ function getAuth(): GoogleAuth {
 
   const keyJson = process.env.GCP_SERVICE_ACCOUNT_KEY;
   if (keyJson) {
-    // Vercel / CI: credentials from env var (JSON string)
     const credentials = JSON.parse(keyJson);
     console.log(`[gcp-auth] using service account: ${credentials.client_email ?? "unknown"}, project: ${credentials.project_id ?? "unknown"}`);
-    // Vercel's env var UI double-escapes \n in the private key — fix them
     if (credentials.private_key) {
       const hadEscaped = credentials.private_key.includes("\\n");
       credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
@@ -27,15 +26,29 @@ function getAuth(): GoogleAuth {
   return authInstance;
 }
 
-export async function getAccessToken(): Promise<string> {
+export async function getAuthClient(): Promise<AuthClient> {
   const auth = getAuth();
-  const client = await auth.getClient();
-  const tokenResponse = await client.getAccessToken();
-  const token = tokenResponse.token;
-  if (!token) {
-    console.error("[gcp-auth] getAccessToken returned empty token. Response keys:", Object.keys(tokenResponse));
-    throw new Error("Failed to obtain GCP access token");
-  }
-  console.log(`[gcp-auth] token acquired (${token.substring(0, 8)}...${token.substring(token.length - 4)})`);
-  return token;
+  return auth.getClient();
+}
+
+/**
+ * Make an authenticated GET request to a GCP API.
+ */
+export async function gcpGet<T>(url: string): Promise<T> {
+  const client = await getAuthClient();
+  console.log(`[gcp-request] GET ${url.substring(0, 120)}`);
+  const res = await client.request<T>({ url, method: "GET" });
+  console.log(`[gcp-request] GET ${res.status} ${typeof res.data === "object" ? "json" : typeof res.data}`);
+  return res.data;
+}
+
+/**
+ * Make an authenticated POST request to a GCP API.
+ */
+export async function gcpPost<T>(url: string, data: unknown): Promise<T> {
+  const client = await getAuthClient();
+  console.log(`[gcp-request] POST ${url}`);
+  const res = await client.request<T>({ url, method: "POST", data });
+  console.log(`[gcp-request] POST ${res.status} ${typeof res.data === "object" ? "json" : typeof res.data}`);
+  return res.data;
 }
