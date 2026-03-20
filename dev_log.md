@@ -592,3 +592,41 @@ Decision: Use k8s container metrics which are universally available.
 - Add Istio/LB metrics support once telemetry is enabled on the clusters
 - Consider adding request rate metrics from application-level sources (Datadog, custom metrics)
 - Manual testing of the full investigation flow with metrics visible
+
+## 2026-03-20 — Session 11: Make Dashboard Self-Contained for Vercel Deployment
+
+### Goal
+
+Eliminate the dashboard's dependency on root `src/` via the `@shared` alias so `dashboard/` can be deployed to Vercel as a standalone Next.js app.
+
+### Problem
+
+The dashboard imported shared code from `../src/*` through a `@shared` TypeScript path alias. This required webpack/turbopack alias configuration in `next.config.ts`, an `include` entry for `../src/**/*.ts` in `tsconfig.json`, and meant Vercel couldn't build `dashboard/` without the parent directory. Since the CLI agent is no longer needed, the shared code should live inside the dashboard.
+
+### Changes
+
+**6 files copied into `dashboard/`** (with import paths adjusted):
+- `src/types/memory.ts` → `dashboard/types/memory.ts`
+- `src/memory/api-client.ts` → `dashboard/utils/memory/api-client.ts`
+- `src/memory/storage.ts` → `dashboard/utils/memory/storage.ts`
+- `src/memory/learnings.ts` → `dashboard/utils/memory/learnings.ts`
+- `src/memory/operations.ts` → `dashboard/utils/memory/operations.ts`
+- `src/agent/prompt.ts` → `dashboard/utils/agent/prompt.ts`
+
+**18 import statements updated** across 16 consumer files: `@shared/types/memory` → `@/types/memory`, `@shared/memory/storage` → `@/utils/memory/storage`, `@shared/memory/operations` → `@/utils/memory/operations`, `@shared/agent/prompt` → `@/utils/agent/prompt`.
+
+**Config simplified**:
+- `next.config.ts`: Removed `path` import, `sharedPath` variable, `turbopack.resolveAlias`, and `webpack` callback with alias/extensionAlias. Now just `serverExternalPackages`.
+- `tsconfig.json`: Removed `@shared/*` path alias and `../src/**/*.ts` include entry.
+
+**Dead code deleted**: `dashboard/lib/mcp-tools.ts` (untracked) — imported `@shared/mcp/client` but nothing in the dashboard imported this file.
+
+**CLAUDE.md updated**: Refreshed technology decisions, dev commands, and future work to reflect current state (dashboard is primary interface, Algolia storage, no CLI).
+
+### Verification
+
+`cd dashboard && npm run build` — clean build, no errors.
+
+### Deployment
+
+Vercel can now deploy from `dashboard/` with root directory set to `dashboard/`. Required env vars: `ALGOLIA_APP_ID`, `ALGOLIA_API_KEY`, `ALGOLIA_INDEX_NAME`, `ANTHROPIC_API_KEY`.

@@ -1,4 +1,4 @@
-import type { TimelineEvent } from "@shared/types/memory";
+import type { TimelineEvent } from "@/types/memory";
 
 const sourceIcons: Record<string, string> = {
   logs: "\u25b6", // terminal-like

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { IncidentMemory } from "@shared/types/memory";
+import type { IncidentMemory } from "@/types/memory";
 import { SeverityBadge, StatusBadge } from "@/components/ui/badge";
 
 function isRecentlyActive(lastSeen: string, thresholdMs = 30_000): boolean {

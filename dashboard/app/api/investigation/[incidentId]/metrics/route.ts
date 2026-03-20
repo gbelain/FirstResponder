@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loadMemory } from "@shared/memory/storage";
+import { loadMemory } from "@/utils/memory/storage";
 import { callMcpTool } from "@/utils/mcp-tools";
 import type { DataPoint, ServiceMetrics, MetricsResponse } from "@/types/metrics";
 

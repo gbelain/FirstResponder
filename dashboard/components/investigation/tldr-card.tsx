@@ -1,4 +1,4 @@
-import type { TLDR } from "@shared/types/memory";
+import type { TLDR } from "@/types/memory";
 
 export function TLDRCard({ tldr }: { tldr: TLDR }) {
   const updatedAgo = getTimeAgo(tldr.last_updated);

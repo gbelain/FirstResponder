@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
-import type { IncidentMemory } from "@shared/types/memory";
+import type { IncidentMemory } from "@/types/memory";
 import { useInvestigation } from "@/hooks/use-investigation";
 import { MetadataBar } from "./metadata-bar";
 import { TLDRCard } from "./tldr-card";

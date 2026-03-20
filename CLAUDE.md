@@ -6,14 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **FirstResponder** is an AI-powered incident response agent that helps engineering teams investigate production incidents by querying Google Cloud Platform logs, identifying patterns, proposing hypotheses, and maintaining structured investigation memory.
 
-**Current Phase**: Phase 1 - Core Investigation Loop (single-user, file-based memory)
+**Current State**: Self-contained Next.js dashboard with multi-user collaboration, Algolia-backed storage, and Agent Studio memory integration for cross-incident learnings.
 
 **Key Technology Decisions**:
 - Language: TypeScript (Node.js runtime)
-- AI Model: Claude Sonnet 4.5 (via Anthropic TypeScript SDK)
+- AI Model: Claude Sonnet 4.5 (via Vercel AI SDK + @ai-sdk/anthropic)
 - Log Source: GCP via google-cloud-observability MCP server
-- Memory: JSON files (Agent Studio memory integration in later phase)
-- Interface: CLI (Next.js dashboard in later phase)
+- Storage: Algolia index (`firstresponder_incidents`)
+- Learnings: Agent Studio Memory REST API (episodic/semantic)
+- Interface: Next.js App Router dashboard in `dashboard/`
 
 ## Core Architecture Concepts
 
@@ -156,25 +157,25 @@ Agent:
 ## Development Commands
 
 ```bash
-npm run dev        # Run with tsx (fast, no build step)
-npm run build      # Compile TypeScript to dist/
-npm run start      # Run compiled JS from dist/
-npm run typecheck  # Type check without emitting files
+cd dashboard
+npm run dev        # Start Next.js dev server (webpack mode)
+npm run build      # Production build
+npm run start      # Serve production build
 ```
+
+The dashboard is self-contained — all shared code lives under `dashboard/`. Deployable to Vercel with root directory set to `dashboard/`.
 
 ## Code Conventions
 
 - **Imports at top**: All imports must be at the top of the file. Avoid dynamic imports inside functions.
 - **UTC timestamps**: All timestamps in memory use ISO 8601 format in UTC.
 
-## Future Phases (Out of Scope for Phase 1)
+## Future Work
 
-- Multi-user collaboration with separate conversation threads
-- Agent Studio memory service integration (replacing file-based memory)
-- Web dashboard for investigation visualization
 - Memory compression and summarization
 - Postmortem generation
 - Historical pattern recognition
+- Datadog trace integration
 
 ## Key Documentation Files
 

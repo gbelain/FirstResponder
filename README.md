@@ -90,15 +90,20 @@ Replace file-based storage with a standard Algolia index for structured incident
 Add support for multiple simultaneous investigators with separate conversation threads, shared memory access, and cross-thread context awareness. Enables real teams to collaborate through the agent.
 
 ### Phase 5: Investigation Dashboard
-Build a web-based dashboard displaying real-time incident state including timeline, active hypotheses, key findings, and ruled-out theories. Provides visibility into investigation progress without requiring chat interaction. *(Note: a prototype dashboard was built during Phase 1 as a Next.js app in `dashboard/`.)*
+Build a web-based dashboard displaying real-time incident state including timeline, active hypotheses, key findings, and ruled-out theories. Provides visibility into investigation progress without requiring chat interaction.
 
 ### Phase 6: Memory Optimization
 Implement background workers for memory summarization, compression of redundant queries, and intelligent context window management for long-running incidents. Use Agent Studio's `POST /memory/consolidate` endpoint to merge and summarize accumulated learnings. Ensures system scalability.
+- ensure memories and learnings from multiple investigator threads don't conflict and are consolidated 
 
 ### Phase 7: Postmortem Generation
 Enable automatic postmortem document creation using accumulated timeline, hypotheses, and resolution details. Leverages both the structured incident state (from Algolia index) and episodic memories (from Agent Studio) for comprehensive post-incident documentation.
+- create a prompt/skill from looking at existing Algolia post mortems
 
-### Phase 8: Historical Pattern Recognition (Out of scope for lab week)
+### Phase 8: Integrate Datadog traces into the tools
+We now have access to Datadog's MCP, this will be useful on top of GCP logs to look at traces.
+
+### Phase 9: Historical Pattern Recognition (Out of scope for lab week)
 Give the agent access to past incident memories to identify recurring patterns, suggest similar root causes, and accelerate investigation of familiar incidents. Builds institutional knowledge over time. Agent Studio's semantic search across episodic/semantic memories is the foundation for this phase.
 
 ---

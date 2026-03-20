@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listIncidents, loadMemory } from "@shared/memory/storage";
+import { listIncidents, loadMemory } from "@/utils/memory/storage";
 
 export async function GET() {
   const incidentIds = await listIncidents();

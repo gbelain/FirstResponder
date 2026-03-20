@@ -1,4 +1,4 @@
-import type { Finding } from "@shared/types/memory";
+import type { Finding } from "@/types/memory";
 
 const typeLabels: Record<string, string> = {
   error: "Errors",

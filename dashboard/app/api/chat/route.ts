@@ -1,10 +1,10 @@
 import { streamText, stepCountIs, convertToModelMessages } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
-import { SYSTEM_PROMPT } from "@shared/agent/prompt";
+import { SYSTEM_PROMPT } from "@/utils/agent/prompt";
 import { createMemoryTools } from "@/utils/tools";
 import { loadMcpTools } from "@/utils/mcp-tools";
-import { loadMemory } from "@shared/memory/storage";
-import { updateActiveInvestigator } from "@shared/memory/operations";
+import { loadMemory } from "@/utils/memory/storage";
+import { updateActiveInvestigator } from "@/utils/memory/operations";
 
 export const maxDuration = 120;
 

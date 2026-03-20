@@ -1,4 +1,4 @@
-import type { Hypothesis } from "@shared/types/memory";
+import type { Hypothesis } from "@/types/memory";
 import { ConfidenceBadge, HypothesisStatusBadge } from "@/components/ui/badge";
 
 export function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {

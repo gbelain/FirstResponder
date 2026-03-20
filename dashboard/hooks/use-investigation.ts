@@ -1,5 +1,5 @@
 import useSWR from "swr";
-import type { IncidentMemory } from "@shared/types/memory";
+import type { IncidentMemory } from "@/types/memory";
 
 const fetcher = (url: string) =>
   fetch(url).then((r) => {

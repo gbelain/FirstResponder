@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loadMemory } from "@shared/memory/storage";
+import { loadMemory } from "@/utils/memory/storage";
 
 export async function GET(
   _request: Request,

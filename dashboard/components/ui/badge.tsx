@@ -1,4 +1,4 @@
-import type { Confidence, Severity, IncidentStatus, HypothesisStatus } from "@shared/types/memory";
+import type { Confidence, Severity, IncidentStatus, HypothesisStatus } from "@/types/memory";
 
 const severityStyles: Record<Severity, string> = {
   critical: "bg-severity-critical/15 text-severity-critical border-severity-critical/30",

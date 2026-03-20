@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SeverityBadge, StatusBadge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
-import type { IncidentStatus, Severity } from "@shared/types/memory";
+import type { IncidentStatus, Severity } from "@/types/memory";
 
 interface IncidentSummary {
   id: string;

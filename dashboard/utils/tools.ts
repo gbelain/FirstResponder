@@ -12,8 +12,8 @@ import {
   getIncident,
   getHypotheses,
   getTimeline,
-} from "@shared/memory/operations";
-import { listIncidents } from "@shared/memory/storage";
+} from "@/utils/memory/operations";
+import { listIncidents } from "@/utils/memory/storage";
 
 export function createMemoryTools(userName: string) {
   return {
