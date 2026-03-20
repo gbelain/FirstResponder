@@ -7,6 +7,27 @@ import {
   listAlertPolicies,
 } from "@/utils/gcp/monitoring";
 
+function logToolCall(toolName: string, params: unknown, result: unknown, durationMs: number) {
+  const summary =
+    result && typeof result === "object"
+      ? Object.fromEntries(
+          Object.entries(result as Record<string, unknown>).map(([k, v]) => [
+            k,
+            Array.isArray(v) ? `[${v.length} items]` : typeof v,
+          ])
+        )
+      : typeof result;
+  console.log(
+    `[gcp-tool] ${toolName} completed in ${durationMs}ms | params: ${JSON.stringify(params)} | result shape: ${JSON.stringify(summary)}`
+  );
+}
+
+function logToolError(toolName: string, params: unknown, error: unknown) {
+  console.error(
+    `[gcp-tool] ${toolName} FAILED | params: ${JSON.stringify(params)} | error: ${error instanceof Error ? error.message : String(error)}`
+  );
+}
+
 export function createGcpTools() {
   return {
     list_log_entries: tool({
@@ -30,7 +51,15 @@ export function createGcpTools() {
         pageToken: z.string().optional().describe("Pagination token from previous response"),
       }),
       execute: async (params) => {
-        return await listLogEntries(params);
+        const start = Date.now();
+        try {
+          const result = await listLogEntries(params);
+          logToolCall("list_log_entries", params, result, Date.now() - start);
+          return result;
+        } catch (error) {
+          logToolError("list_log_entries", params, error);
+          throw error;
+        }
       },
     }),
 
@@ -69,7 +98,15 @@ export function createGcpTools() {
         pageToken: z.string().optional(),
       }),
       execute: async (params) => {
-        return await listTimeSeries(params);
+        const start = Date.now();
+        try {
+          const result = await listTimeSeries(params);
+          logToolCall("list_time_series", params, result, Date.now() - start);
+          return result;
+        } catch (error) {
+          logToolError("list_time_series", params, error);
+          throw error;
+        }
       },
     }),
 
@@ -86,7 +123,15 @@ export function createGcpTools() {
         pageToken: z.string().optional(),
       }),
       execute: async (params) => {
-        return await listMetricDescriptors(params);
+        const start = Date.now();
+        try {
+          const result = await listMetricDescriptors(params);
+          logToolCall("list_metric_descriptors", params, result, Date.now() - start);
+          return result;
+        } catch (error) {
+          logToolError("list_metric_descriptors", params, error);
+          throw error;
+        }
       },
     }),
 
@@ -100,7 +145,15 @@ export function createGcpTools() {
         pageToken: z.string().optional(),
       }),
       execute: async (params) => {
-        return await listAlertPolicies(params);
+        const start = Date.now();
+        try {
+          const result = await listAlertPolicies(params);
+          logToolCall("list_alert_policies", params, result, Date.now() - start);
+          return result;
+        } catch (error) {
+          logToolError("list_alert_policies", params, error);
+          throw error;
+        }
       },
     }),
   };

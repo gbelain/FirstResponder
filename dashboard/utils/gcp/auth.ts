@@ -11,13 +11,16 @@ function getAuth(): GoogleAuth {
   if (keyJson) {
     // Vercel / CI: credentials from env var (JSON string)
     const credentials = JSON.parse(keyJson);
+    console.log(`[gcp-auth] using service account: ${credentials.client_email ?? "unknown"}, project: ${credentials.project_id ?? "unknown"}`);
     // Vercel's env var UI double-escapes \n in the private key — fix them
     if (credentials.private_key) {
+      const hadEscaped = credentials.private_key.includes("\\n");
       credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+      if (hadEscaped) console.log("[gcp-auth] fixed double-escaped newlines in private_key");
     }
     authInstance = new GoogleAuth({ credentials, scopes: SCOPES });
   } else {
-    // Local dev: Application Default Credentials (gcloud auth)
+    console.log("[gcp-auth] no GCP_SERVICE_ACCOUNT_KEY, falling back to Application Default Credentials");
     authInstance = new GoogleAuth({ scopes: SCOPES });
   }
 
@@ -29,6 +32,10 @@ export async function getAccessToken(): Promise<string> {
   const client = await auth.getClient();
   const tokenResponse = await client.getAccessToken();
   const token = tokenResponse.token;
-  if (!token) throw new Error("Failed to obtain GCP access token");
+  if (!token) {
+    console.error("[gcp-auth] getAccessToken returned empty token. Response keys:", Object.keys(tokenResponse));
+    throw new Error("Failed to obtain GCP access token");
+  }
+  console.log(`[gcp-auth] token acquired (${token.substring(0, 8)}...${token.substring(token.length - 4)})`);
   return token;
 }

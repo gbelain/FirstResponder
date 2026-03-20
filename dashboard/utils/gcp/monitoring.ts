@@ -58,12 +58,17 @@ export async function listTimeSeries(
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  console.log(`[gcp-monitoring] timeSeries response status: ${res.status} ${res.statusText}`);
+
   if (!res.ok) {
     const text = await res.text();
+    console.error(`[gcp-monitoring] timeSeries error body: ${text.substring(0, 500)}`);
     throw new Error(`Cloud Monitoring API error ${res.status}: ${text}`);
   }
 
-  return (await res.json()) as ListTimeSeriesResponse;
+  const data = (await res.json()) as ListTimeSeriesResponse;
+  console.log(`[gcp-monitoring] returned ${data.timeSeries?.length ?? 0} time series`);
+  return data;
 }
 
 // ---- Metric Descriptors ----
