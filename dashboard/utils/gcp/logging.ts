@@ -31,17 +31,19 @@ export async function listLogEntries(
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
+    cache: "no-store",
   });
 
-  console.log(`[gcp-logging] API response status: ${res.status} ${res.statusText}`);
+  console.log(`[gcp-logging] status=${res.status} url=${res.url} content-type=${res.headers.get("content-type")}`);
+
+  const text = await res.text();
 
   if (!res.ok) {
-    const text = await res.text();
-    console.error(`[gcp-logging] API error body: ${text.substring(0, 500)}`);
+    console.error(`[gcp-logging] error body: ${text.substring(0, 500)}`);
     throw new Error(`Cloud Logging API error ${res.status}: ${text}`);
   }
 
-  const data = (await res.json()) as ListLogEntriesResponse;
+  const data = JSON.parse(text) as ListLogEntriesResponse;
   console.log(`[gcp-logging] returned ${data.entries?.length ?? 0} entries, hasNextPage: ${!!data.nextPageToken}`);
   return data;
 }

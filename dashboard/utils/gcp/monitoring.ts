@@ -7,6 +7,28 @@ import type {
 
 const MONITORING_API = "https://monitoring.googleapis.com/v3";
 
+async function gcpFetch(url: string, token: string, init?: RequestInit): Promise<string> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...init?.headers,
+    },
+    cache: "no-store",
+  });
+
+  console.log(`[gcp-monitoring] status=${res.status} url=${res.url} content-type=${res.headers.get("content-type")}`);
+
+  const text = await res.text();
+
+  if (!res.ok) {
+    console.error(`[gcp-monitoring] error body: ${text.substring(0, 500)}`);
+    throw new Error(`Cloud Monitoring API error ${res.status}: ${text}`);
+  }
+
+  return text;
+}
+
 // ---- Time Series ----
 
 export interface ListTimeSeriesParams {
@@ -54,19 +76,8 @@ export async function listTimeSeries(
   }
 
   const url = `${MONITORING_API}/${params.name}/timeSeries?${qs.toString()}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  console.log(`[gcp-monitoring] timeSeries response status: ${res.status} ${res.statusText}`);
-
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`[gcp-monitoring] timeSeries error body: ${text.substring(0, 500)}`);
-    throw new Error(`Cloud Monitoring API error ${res.status}: ${text}`);
-  }
-
-  const data = (await res.json()) as ListTimeSeriesResponse;
+  const text = await gcpFetch(url, token);
+  const data = JSON.parse(text) as ListTimeSeriesResponse;
   console.log(`[gcp-monitoring] returned ${data.timeSeries?.length ?? 0} time series`);
   return data;
 }
@@ -91,16 +102,8 @@ export async function listMetricDescriptors(
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/metricDescriptors?${qs.toString()}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Metric Descriptors API error ${res.status}: ${text}`);
-  }
-
-  return (await res.json()) as ListMetricDescriptorsResponse;
+  const text = await gcpFetch(url, token);
+  return JSON.parse(text) as ListMetricDescriptorsResponse;
 }
 
 // ---- Alert Policies ----
@@ -123,14 +126,6 @@ export async function listAlertPolicies(
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/alertPolicies?${qs.toString()}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Alert Policies API error ${res.status}: ${text}`);
-  }
-
-  return (await res.json()) as ListAlertPoliciesResponse;
+  const text = await gcpFetch(url, token);
+  return JSON.parse(text) as ListAlertPoliciesResponse;
 }
