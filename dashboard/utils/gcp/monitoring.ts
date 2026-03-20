@@ -1,4 +1,5 @@
-import { gcpGet } from "./auth";
+import { getAccessToken } from "./auth";
+import { gcpGet } from "./https-client";
 import type {
   ListTimeSeriesResponse,
   ListMetricDescriptorsResponse,
@@ -26,6 +27,8 @@ export interface ListTimeSeriesParams {
 export async function listTimeSeries(
   params: ListTimeSeriesParams
 ): Promise<ListTimeSeriesResponse> {
+  const token = await getAccessToken();
+
   const qs = new URLSearchParams();
   qs.set("filter", params.filter);
   qs.set("interval.startTime", params.interval.startTime);
@@ -51,7 +54,7 @@ export async function listTimeSeries(
   }
 
   const url = `${MONITORING_API}/${params.name}/timeSeries?${qs.toString()}`;
-  const data = await gcpGet<ListTimeSeriesResponse>(url);
+  const data = await gcpGet<ListTimeSeriesResponse>(url, token);
   console.log(`[gcp-monitoring] returned ${data.timeSeries?.length ?? 0} time series`);
   return data;
 }
@@ -68,13 +71,15 @@ export interface ListMetricDescriptorsParams {
 export async function listMetricDescriptors(
   params: ListMetricDescriptorsParams
 ): Promise<ListMetricDescriptorsResponse> {
+  const token = await getAccessToken();
+
   const qs = new URLSearchParams();
   if (params.filter) qs.set("filter", params.filter);
   if (params.pageSize) qs.set("pageSize", String(params.pageSize));
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/metricDescriptors?${qs.toString()}`;
-  return gcpGet<ListMetricDescriptorsResponse>(url);
+  return gcpGet<ListMetricDescriptorsResponse>(url, token);
 }
 
 // ---- Alert Policies ----
@@ -89,11 +94,13 @@ export interface ListAlertPoliciesParams {
 export async function listAlertPolicies(
   params: ListAlertPoliciesParams
 ): Promise<ListAlertPoliciesResponse> {
+  const token = await getAccessToken();
+
   const qs = new URLSearchParams();
   if (params.filter) qs.set("filter", params.filter);
   if (params.pageSize) qs.set("pageSize", String(params.pageSize));
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/alertPolicies?${qs.toString()}`;
-  return gcpGet<ListAlertPoliciesResponse>(url);
+  return gcpGet<ListAlertPoliciesResponse>(url, token);
 }

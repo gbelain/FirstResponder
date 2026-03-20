@@ -1,4 +1,5 @@
-import { gcpPost } from "./auth";
+import { getAccessToken } from "./auth";
+import { gcpPost } from "./https-client";
 import type { ListLogEntriesResponse } from "./types";
 
 const LOGGING_API = "https://logging.googleapis.com/v2/entries:list";
@@ -14,6 +15,8 @@ export interface ListLogEntriesParams {
 export async function listLogEntries(
   params: ListLogEntriesParams
 ): Promise<ListLogEntriesResponse> {
+  const token = await getAccessToken();
+
   const body: Record<string, unknown> = {
     resourceNames: params.resourceNames,
     pageSize: params.pageSize ?? 50,
@@ -22,7 +25,7 @@ export async function listLogEntries(
   if (params.orderBy) body.orderBy = params.orderBy;
   if (params.pageToken) body.pageToken = params.pageToken;
 
-  const data = await gcpPost<ListLogEntriesResponse>(LOGGING_API, body);
+  const data = await gcpPost<ListLogEntriesResponse>(LOGGING_API, token, body);
   console.log(`[gcp-logging] returned ${data.entries?.length ?? 0} entries, hasNextPage: ${!!data.nextPageToken}`);
   return data;
 }
