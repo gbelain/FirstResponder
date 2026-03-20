@@ -100,8 +100,8 @@ Implement background workers for memory summarization, compression of redundant 
 Enable automatic postmortem document creation using accumulated timeline, hypotheses, and resolution details. Leverages both the structured incident state (from Algolia index) and episodic memories (from Agent Studio) for comprehensive post-incident documentation.
 - create a prompt/skill from looking at existing Algolia post mortems
 
-### Phase 8: Integrate Datadog traces into the tools
-We now have access to Datadog's MCP, this will be useful on top of GCP logs to look at traces.
+### Phase 8: Integrate Datadog traces into the tools + Improve GCP skills
+We now have access to Datadog's MCP, this will be useful on top of GCP logs to look at traces. Use skill logic to improve the way FirstResponder queries information from GCP.
 
 ### Phase 9: Historical Pattern Recognition (Out of scope for lab week)
 Give the agent access to past incident memories to identify recurring patterns, suggest similar root causes, and accelerate investigation of familiar incidents. Builds institutional knowledge over time. Agent Studio's semantic search across episodic/semantic memories is the foundation for this phase.
