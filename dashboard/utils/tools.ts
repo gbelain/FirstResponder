@@ -1,5 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
+import fs from "fs";
+import path from "path";
 import {
   createIncident,
   addTimelineEvent,
@@ -170,6 +172,41 @@ export function createMemoryTools(userName: string) {
       }),
       execute: async ({ incident_id }) => {
         return await getTimeline(incident_id);
+      },
+    }),
+
+    get_postmortem_guidelines: tool({
+      description:
+        "Retrieve post-mortem writing guidelines and full incident data. Call this before writing a post-mortem to get the skill prompt and all investigation context needed.",
+      inputSchema: z.object({
+        incident_id: z.string(),
+      }),
+      execute: async ({ incident_id }) => {
+        const skillPath = path.join(
+          process.cwd(),
+          "utils/agent/skills/postmortem-writer.md"
+        );
+        const guidelines = fs.readFileSync(skillPath, "utf-8");
+        const incident = await getIncident(incident_id);
+        return { guidelines, incident };
+      },
+    }),
+
+    save_postmortem: tool({
+      description:
+        "Save the generated post-mortem markdown. Call this after writing the post-mortem content. The file will be downloaded to the user's machine.",
+      inputSchema: z.object({
+        incident_id: z.string(),
+        incident_name: z.string().describe("Incident name for the filename"),
+        content: z.string().describe("The full post-mortem markdown content"),
+      }),
+      execute: async ({ incident_id, incident_name, content }) => {
+        const slug = incident_name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
+        const filename = `postmortem-${slug}-${incident_id}.md`;
+        return { filename, content };
       },
     }),
   };

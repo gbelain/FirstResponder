@@ -745,3 +745,86 @@ Dashboard fully deployed and operational on Vercel:
 
 - **deploy-to-vercel skill**: Deployment planning and readiness assessment
 - **google-cloud-observability MCP**: Available for direct GCP log querying from Claude Code (used during investigation of the auth issue)
+
+## 2026-03-21 — Session 14: Datadog APM Traces Integration
+
+### Goal
+
+Add Datadog APM trace querying as a parallel data source alongside GCP Cloud Logging. Lets the agent investigate latency issues, error rates, and distributed request flows via APM spans.
+
+### Key discovery
+
+GCP and Datadog use different service names for the same workloads:
+- GCP `generativeai-rag-api` → Datadog `conversational-ai`
+- Datadog also has `mcp-server` for the MCP server component
+
+### New files created
+
+- **`dashboard/utils/datadog/client.ts`** — Singleton `getSpansApi()` accessor. The SDK auto-reads `DD_API_KEY`, `DD_APP_KEY`, `DD_SITE` from `process.env` via `client.createConfiguration()`.
+- **`dashboard/utils/datadog/types.ts`** — Lean response types: `SpanSummary` (trimmed from verbose SDK `Span` objects), `SearchSpansResult`, `AggregateSpansResult`, `AggregateBucket`. `SpanSummary` includes computed `durationMs` and capped `meta` (first 20 keys).
+- **`dashboard/utils/datadog/spans.ts`** — Three API wrappers:
+  - `searchSpans()` — calls `spansApi.listSpansGet()` (flat GET params), maps `Span[]` → `SpanSummary[]`
+  - `aggregateSpans()` — calls `spansApi.aggregateSpans()` (POST body with compute/groupBy arrays), maps to lean buckets
+  - `getTraceSpans(traceId)` — calls `searchSpans` with `trace_id:<id>`, limit 200, sorted ascending
+- **`dashboard/utils/datadog-tools.ts`** — Factory `createDatadogTools()` returning three AI SDK tools (same pattern as `gcp-tools.ts`):
+  - `search_datadog_spans` — search spans by service, status, time range
+  - `aggregate_datadog_spans` — compute error counts, p95 latency, grouped by resource/status
+  - `get_datadog_trace` — get all spans for a trace ID
+  - Each tool has `logToolCall`/`logToolError` helpers with `[datadog-tool]` prefix
+
+### Modified files
+
+- **`dashboard/app/api/chat/route.ts`** — Imported `createDatadogTools`, wired into `tools: { ...userTools, ...gcpTools, ...datadogTools }`
+- **`dashboard/utils/agent/prompt.ts`** — Added Datadog APM section after GCP Logging:
+  - Service name mapping (GCP ↔ Datadog)
+  - When to use Datadog vs GCP (latency/error rates vs app logs/stack traces)
+  - Query syntax examples (`service:conversational-ai status:error`, `@duration:>1000000000`)
+  - Investigation patterns: error spike aggregation, latency timeseries, single-trace drilldown, dependency bottleneck identification
+  - Cross-reference hint: GCP `jsonPayload.dd.trace_id` links to Datadog traces
+- **`dashboard/.env.local`** — Added `DD_API_KEY`, `DD_APP_KEY`, `DD_SITE` (values from root `.env`)
+
+### Dependencies
+
+`@datadog/datadog-api-client` was already in `dashboard/package.json` (v1.53.0). No new dependencies needed.
+
+### Verification
+
+- `npm run build` — clean, no type errors
+- Manual test — agent correctly calls Datadog tools when asked about APM traces, latency, and error rates
+
+### Architecture notes
+
+- **SDK auto-config**: The Datadog SDK reads auth from `DD_API_KEY`, `DD_APP_KEY`, `DD_SITE` environment variables automatically via `client.createConfiguration()` — no manual auth code needed.
+- **GET variant for search**: Used `listSpansGet()` (flat GET params) instead of `listSpans()` (nested POST body) because params map cleanly to a Zod schema without deep nesting.
+- **Response trimming**: SDK `Span` objects are verbose. `mapSpan()` extracts only investigation-relevant fields and caps custom attributes to 20 keys to keep tool results focused.
+
+## 2026-03-21 — Session 15: Post-Mortem Generation Feature
+
+### Goal
+
+Add the ability for FirstResponder to generate a post-mortem document once an incident is resolved, saved as a `.md` file downloaded to the user's machine.
+
+### Design decisions
+
+- **Trigger**: Agent offers to write a post-mortem after root cause is confirmed. User must explicitly approve before generation starts.
+- **Skill-based approach**: Post-mortem writing guidelines live in a standalone markdown file (`dashboard/utils/agent/skills/postmortem-writer.md`) that the agent reads at generation time via a tool call. This keeps the guidelines out of the system prompt (no token waste on every message) and makes them easy to iterate on independently.
+- **No schema changes**: The incident memory already contains everything needed (timeline, hypotheses, findings, root cause). The post-mortem is a generated output artifact, not investigation state — no new fields in `IncidentMemory`.
+- **Two-tool flow**: `get_postmortem_guidelines` (returns skill + incident data) → agent writes markdown → `save_postmortem` (returns content for client-side download). Separation keeps each tool focused.
+- **Client-side download**: Browser detects `save_postmortem` tool output in the message stream and triggers a file download via Blob URL. Uses a `Set<string>` ref to prevent duplicate downloads when the effect re-runs.
+
+### New files
+
+- **`dashboard/utils/agent/skills/postmortem-writer.md`** — Post-mortem writing guidelines covering 7 sections (title/metadata, executive summary, timeline, root cause, hypotheses considered, impact, action items) plus writing style rules (blameless, concise, factual, evidence-based).
+
+### Modified files
+
+- **`dashboard/utils/tools.ts`** — Added two tools:
+  - `get_postmortem_guidelines`: Reads the skill file via `fs.readFileSync` + loads incident memory from Algolia. Returns both to the model.
+  - `save_postmortem`: Takes `incident_id`, `incident_name`, `content`. Generates a slugified filename (`postmortem-{slug}-{id}.md`), returns `{ filename, content }` for client download.
+- **`dashboard/utils/agent/prompt.ts`** — Added "Post-Mortem Generation" section to the system prompt: offer after resolution, wait for approval, always read guidelines first, then write and save.
+- **`dashboard/components/chat/chat-panel.tsx`** — Added `useEffect` detecting `save_postmortem` tool output. Creates a Blob, triggers download via temporary anchor element. Tracks downloaded filenames in a `useRef(new Set())` to avoid duplicates.
+
+### Verification
+
+- `npm run build` — clean, no errors.
+- Manual test — agent offers post-mortem after resolution, reads guidelines, writes structured markdown, file downloads to browser.

@@ -93,6 +93,35 @@ export function ChatPanel({ incidentId, userName, onIncidentCreated }: ChatPanel
     }
   }, [messages, onIncidentCreated]);
 
+  // Track which postmortems have already been downloaded to avoid duplicates
+  const downloadedPostmortems = useRef(new Set<string>());
+
+  // Detect save_postmortem tool call to trigger file download
+  useEffect(() => {
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        if (part.type === "tool-save_postmortem") {
+          const toolPart = part as Record<string, unknown>;
+          if (toolPart.state === "output-available") {
+            const output = toolPart.output as { filename?: string; content?: string } | undefined;
+            if (output?.filename && output?.content && !downloadedPostmortems.current.has(output.filename)) {
+              downloadedPostmortems.current.add(output.filename);
+              const blob = new Blob([output.content], { type: "text/markdown" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = output.filename;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }
+          }
+        }
+      }
+    }
+  }, [messages]);
+
   const doSend = useCallback(() => {
     const text = input.trim();
     if (!text || isStreaming) return;
