@@ -668,3 +668,80 @@ Lightweight REST: `google-auth-library` + `fetch` to GCP Logging v2 and Monitori
 
 - `npm run build` — clean
 - `npm run dev` — agent queries GCP logs successfully via REST, metrics charts load
+
+## 2026-03-21 — Session 13: Vercel Deployment + GCP Auth Debugging
+
+### Goal
+
+Deploy the dashboard to Vercel and get GCP log querying + metrics working in production.
+
+### Deployment planning
+
+Used the **deploy-to-vercel** skill to assess deployment readiness. Key findings:
+- Git remote exists (`github.com/gbelain/FirstResponder.git`)
+- Vercel CLI not installed locally — deployed via Vercel's web UI instead
+- Root directory set to `dashboard/` in Vercel project settings
+- No build-time external calls — all GCP/Algolia/Anthropic calls are runtime-only
+
+### Environment variables configured on Vercel
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `ALGOLIA_APP_ID` | Yes | Incident storage |
+| `ALGOLIA_API_KEY` | Yes | Incident storage |
+| `ALGOLIA_INDEX_NAME` | Yes | Index name |
+| `ANTHROPIC_API_KEY` | Yes | Agent reasoning |
+| `GCP_SERVICE_ACCOUNT_KEY` | Yes | GCP Logging + Monitoring auth |
+| `MEMORY_API_BASE_URL` | Optional | Agent Studio Memory API |
+| `MEMORY_API_APP_ID` | Optional | Memory API auth |
+| `MEMORY_API_KEY` | Optional | Memory API auth |
+| `MEMORY_API_USER_TOKEN` | Optional | Memory API auth |
+
+### GCP auth debugging — the rabbit hole
+
+All GCP API calls (log querying via agent tools + metrics dashboard) failed with: `Unexpected token 'y', "ya29.a0ATk"... is not valid JSON`.
+
+**Attempted fixes (all ineffective because they targeted the wrong layer)**:
+1. Added `private_key` newline fix (`\\n` → `\n`) in `auth.ts` — defensive hardening for Vercel's env var UI
+2. Added `cache: "no-store"` to all `fetch()` calls — suspected Next.js fetch caching
+3. Switched from raw `fetch` to `google-auth-library`'s `client.request()` — suspected `gaxios`/fetch interaction
+4. Created `https-client.ts` using `node:https` — bypassed `globalThis.fetch` entirely
+
+None worked because the error wasn't in the HTTP layer at all.
+
+**Root cause**: `GCP_SERVICE_ACCOUNT_KEY` was set to a raw OAuth access token (`ya29.a0ATk...`) instead of the service account JSON key file contents. `JSON.parse("ya29...")` in `getAuth()` was the very first thing that failed — before any HTTP call was made. Every HTTP-level fix was irrelevant.
+
+**Resolution**: Created a dedicated GCP service account via Terraform with `roles/logging.viewer` and `roles/monitoring.viewer`, generated a JSON key, and set the full JSON as the Vercel env var.
+
+### Terraform for GCP service account
+
+Wrote Terraform config to provision:
+- `google_service_account` — dedicated SA for FirstResponder
+- `google_service_account_key` — JSON key stored in Vault
+- `google_project_iam_member` × 2 — `roles/logging.viewer` + `roles/monitoring.viewer`
+
+### Code cleanup
+
+After confirming the real fix (correct env var value), reverted the unnecessary HTTP-layer changes:
+- Restored `logging.ts` and `monitoring.ts` to original plain `fetch` implementation
+- Deleted `https-client.ts` (unnecessary `node:https` wrapper)
+- **Kept** useful additions from the debug session:
+  - `auth.ts`: `private_key` newline fix (safe no-op if not needed) + structured logging
+  - `gcp-tools.ts`: Tool-level logging (`logToolCall`/`logToolError`) with params, result shape, and duration
+
+### Lesson learned
+
+When `JSON.parse` throws `Unexpected token 'y'`, the input starts with `y` — not valid JSON. Before investigating HTTP response corruption, verify that the input to `JSON.parse` is actually JSON. In this case, tracing the error to the exact `JSON.parse` call site (line 12 of `auth.ts`) would have immediately revealed the env var was set to a token, not a key file.
+
+### Current state
+
+Dashboard fully deployed and operational on Vercel:
+- Agent chat with GCP log querying works
+- Metrics dashboard displays container metrics
+- Multi-user collaboration functional
+- Algolia-backed incident storage working
+
+### Tools and skills used
+
+- **deploy-to-vercel skill**: Deployment planning and readiness assessment
+- **google-cloud-observability MCP**: Available for direct GCP log querying from Claude Code (used during investigation of the auth issue)
