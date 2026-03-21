@@ -1,5 +1,4 @@
 import { getAccessToken } from "./auth";
-import { gcpGet } from "./https-client";
 import type {
   ListTimeSeriesResponse,
   ListMetricDescriptorsResponse,
@@ -39,6 +38,7 @@ export async function listTimeSeries(
   if (params.aggregation) {
     const agg = params.aggregation;
     if (agg.alignmentPeriod) {
+      // Normalize: ensure it ends with "s"
       const period = agg.alignmentPeriod.endsWith("s")
         ? agg.alignmentPeriod
         : `${agg.alignmentPeriod}s`;
@@ -54,9 +54,16 @@ export async function listTimeSeries(
   }
 
   const url = `${MONITORING_API}/${params.name}/timeSeries?${qs.toString()}`;
-  const data = await gcpGet<ListTimeSeriesResponse>(url, token);
-  console.log(`[gcp-monitoring] returned ${data.timeSeries?.length ?? 0} time series`);
-  return data;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Cloud Monitoring API error ${res.status}: ${text}`);
+  }
+
+  return (await res.json()) as ListTimeSeriesResponse;
 }
 
 // ---- Metric Descriptors ----
@@ -79,7 +86,16 @@ export async function listMetricDescriptors(
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/metricDescriptors?${qs.toString()}`;
-  return gcpGet<ListMetricDescriptorsResponse>(url, token);
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Metric Descriptors API error ${res.status}: ${text}`);
+  }
+
+  return (await res.json()) as ListMetricDescriptorsResponse;
 }
 
 // ---- Alert Policies ----
@@ -102,5 +118,14 @@ export async function listAlertPolicies(
   if (params.pageToken) qs.set("pageToken", params.pageToken);
 
   const url = `${MONITORING_API}/${params.name}/alertPolicies?${qs.toString()}`;
-  return gcpGet<ListAlertPoliciesResponse>(url, token);
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Alert Policies API error ${res.status}: ${text}`);
+  }
+
+  return (await res.json()) as ListAlertPoliciesResponse;
 }

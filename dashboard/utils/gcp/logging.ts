@@ -1,5 +1,4 @@
 import { getAccessToken } from "./auth";
-import { gcpPost } from "./https-client";
 import type { ListLogEntriesResponse } from "./types";
 
 const LOGGING_API = "https://logging.googleapis.com/v2/entries:list";
@@ -25,7 +24,19 @@ export async function listLogEntries(
   if (params.orderBy) body.orderBy = params.orderBy;
   if (params.pageToken) body.pageToken = params.pageToken;
 
-  const data = await gcpPost<ListLogEntriesResponse>(LOGGING_API, token, body);
-  console.log(`[gcp-logging] returned ${data.entries?.length ?? 0} entries, hasNextPage: ${!!data.nextPageToken}`);
-  return data;
+  const res = await fetch(LOGGING_API, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Cloud Logging API error ${res.status}: ${text}`);
+  }
+
+  return (await res.json()) as ListLogEntriesResponse;
 }
