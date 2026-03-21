@@ -3,6 +3,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { SYSTEM_PROMPT } from "@/utils/agent/prompt";
 import { createMemoryTools } from "@/utils/tools";
 import { createGcpTools } from "@/utils/gcp-tools";
+import { createDatadogTools } from "@/utils/datadog-tools";
 import { loadMemory } from "@/utils/memory/storage";
 import { updateActiveInvestigator } from "@/utils/memory/operations";
 
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
   }
 
   const gcpTools = createGcpTools();
+  const datadogTools = createDatadogTools();
   const userTools = createMemoryTools(resolvedName);
 
   let systemPrompt = SYSTEM_PROMPT;
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
     model: anthropic("claude-sonnet-4-5-20250929"),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
-    tools: { ...userTools, ...gcpTools },
+    tools: { ...userTools, ...gcpTools, ...datadogTools },
     stopWhen: stepCountIs(20),
   });
 

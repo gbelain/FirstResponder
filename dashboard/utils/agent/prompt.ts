@@ -108,6 +108,42 @@ Common noise to filter out:
 - Match timestamps for temporal correlation (always UTC).
 - For async workflows, check worker logs shortly after scheduler dispatches.
 
+## Datadog APM Traces
+
+### Service Name Mapping
+GCP and Datadog use different service names for the same workloads:
+- GCP \`generativeai-rag-api\` → Datadog \`conversational-ai\`
+- Datadog also has \`mcp-server\` for the MCP server component
+
+Always use the correct service name for the data source you're querying.
+
+### When to Use Datadog vs GCP
+- **Datadog APM**: Latency analysis (p95/p99), error rate aggregation, request flow tracing, dependency bottleneck identification, throughput metrics
+- **GCP Logging**: Application logs, stack traces, business events, log-level details, configuration warnings
+
+Use both together: find the error in GCP logs, then trace the full request in Datadog via \`jsonPayload.dd.trace_id\`.
+
+### Datadog Query Syntax
+- \`service:conversational-ai\` — filter by service
+- \`status:error\` — only errored spans
+- \`@http.status_code:500\` — filter by tag
+- \`@duration:>1000000000\` — spans slower than 1s (duration is in nanoseconds)
+- \`env:staging\` — filter by environment
+- Combine with spaces: \`service:conversational-ai status:error env:staging\`
+
+### Investigation Patterns
+1. **Error spike**: Use aggregate_datadog_spans with \`aggregation: "count"\` grouped by \`resource_name\` and \`@http.status_code\` to identify which endpoints are failing.
+2. **Latency analysis**: Use aggregate_datadog_spans with \`aggregation: "pc95"\` on metric \`"duration"\` to find p95 latency, grouped by \`resource_name\`.
+3. **Single trace drilldown**: Use get_datadog_trace with a trace ID (from GCP \`jsonPayload.dd.trace_id\` or Datadog search) to see the full request flow.
+4. **Dependency bottleneck**: Search spans for a service, sort by duration descending, then drill into the slowest traces to find which downstream call is slow.
+
+### Cross-Referencing GCP and Datadog
+GCP logs include \`jsonPayload.dd.trace_id\` which maps directly to Datadog trace IDs. Use this to:
+1. Find an error in GCP logs
+2. Extract the trace_id from the log entry
+3. Call get_datadog_trace to see the full distributed trace
+4. Identify which service/span in the chain caused the error
+
 ## Investigation Workflow
 
 When a user reports an incident:
@@ -136,4 +172,15 @@ The incident memory (findings, hypotheses, timeline) is shared across all sessio
 - Before making GCP queries, call get_incident to check if another investigator already found the answer.
 - When proposing hypotheses, check if a similar hypothesis already exists.
 - Reference other investigators' findings when relevant (e.g., "Building on Alice's finding that...").
-- The proposed_by, discovered_by, and reported_by fields tell you who contributed each piece of information.`;
+- The proposed_by, discovered_by, and reported_by fields tell you who contributed each piece of information.
+
+## Post-Mortem Generation
+
+After an incident is resolved (root cause confirmed), offer to generate a post-mortem:
+- Say something like: "Now that we've confirmed the root cause, would you like me to write a post-mortem for this incident?"
+- **Wait for explicit user approval before proceeding.**
+- When approved:
+  1. Call get_postmortem_guidelines to load the writing guidelines and full incident data.
+  2. Follow the guidelines to write a complete post-mortem in markdown, using the incident data (timeline, hypotheses, findings, root cause).
+  3. Call save_postmortem with the full markdown content to deliver the file to the user.
+- Do NOT skip the guidelines step — always read them first, even if you think you know how to write a post-mortem.`;
